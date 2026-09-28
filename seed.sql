@@ -194,7 +194,7 @@ BEGIN
     -- 상품 6: 울 블렌드 싱글 코트 (코트)
     INSERT INTO public.product_images (product_id, image_url, is_primary, sort_order)
     VALUES 
-        (v_prod_coat_id, 'https://images.unsplash.com/photo-1539533018447-63fcce667883?w=600&auto=format&fit=crop&q=80', true, 1);
+        (v_prod_coat_id, 'https://images.unsplash.com/photo-1544923246-77307dd654cb?w=600&auto=format&fit=crop&q=80', true, 1);
 
     -- 상품 7: 코튼 베이직 볼캡 모자 (모자)
     INSERT INTO public.product_images (product_id, image_url, is_primary, sort_order)

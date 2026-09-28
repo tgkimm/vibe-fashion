@@ -38,7 +38,7 @@
                 <div class="card h-100 product-card shadow-sm border-0">
                     <!-- 상품 이미지 -->
                     <div class="position-relative overflow-hidden product-image-wrapper">
-                        <img src="{{ item.thumbnail_url }}" class="card-img-top product-img" alt="{{ item.name }}" loading="lazy">
+                        <img src="{{ item.thumbnail_url }}" class="card-img-top product-img" alt="{{ item.name }}" loading="lazy" onerror="this.onerror=null; this.src='https://picsum.photos/600/800';">
                     </div>
 
                     <!-- 상품 정보 본문 -->
