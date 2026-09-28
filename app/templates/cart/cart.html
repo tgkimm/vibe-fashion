@@ -87,9 +87,9 @@
                     <span class="fs-5 fw-bold">총 결제 예정 금액</span>
                     <span class="fs-4 fw-bold text-primary" id="summary-total-amount">{{ "{:,}".format(total_amount) }}원</span>
                 </div>
-                <button class="btn btn-primary w-100 py-3 fw-bold rounded-3 shadow-sm" type="button" onclick="alert('주문 기능이 준비 중입니다.')">
-                    주문하기
-                </button>
+                <a href="{{ url_for('cart.checkout') }}" class="btn btn-primary w-100 py-3 fw-bold rounded-3 shadow-sm text-center text-decoration-none">
+                    <i class="bi bi-credit-card me-2"></i>주문하기
+                </a>
             </div>
         </div>
     </div>

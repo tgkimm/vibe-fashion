@@ -1,6 +1,6 @@
 import logging
 import os
-from flask import Blueprint, render_template, request, jsonify, session
+from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, flash
 from supabase import create_client, Client
 
 # 로깅 설정
@@ -187,3 +187,46 @@ def get_cart_count():
     cart = session.get("cart", {})
     total_count = sum(item["quantity"] for item in cart.values())
     return jsonify({"cart_count": total_count})
+
+
+@cart_bp.route("/checkout", methods=["GET", "POST"])
+def checkout():
+    """
+    주문/결제 페이지:
+    - 로그인 상태 확인: 비로그인 상태일 경우 안내 메시지와 함께 로그인 페이지로 리다이렉트 (로그인 후 다시 결제 페이지로 복귀)
+    - 장바구니가 비어 있을 경우 장바구니로 리다이렉트
+    - GET: 결제 주문서 폼 표시
+    - POST: 주문 완료 처리
+    """
+    # 1. 로그인 여부 검증
+    if "user" not in session:
+        flash("결제를 진행하시려면 먼저 로그인이 필요합니다.", "warning")
+        return redirect(url_for("auth.login", next=url_for("cart.checkout")))
+
+    # 2. 장바구니 품목 확인
+    cart = session.get("cart", {})
+    if not cart:
+        flash("장바구니가 비어 있습니다. 상품을 먼저 담아주세요.", "info")
+        return redirect(url_for("cart.view_cart"))
+
+    items = list(cart.values())
+    total_amount = sum(item["price"] * item["quantity"] for item in items)
+    total_count = sum(item["quantity"] for item in items)
+
+    if request.method == "POST":
+        # 주문 완료 처리: 세션 장바구니 비우기
+        session.pop("cart", None)
+        flash("성공적으로 주문이 접수되었습니다! 감사합니다.", "success")
+        return render_template(
+            "cart/checkout_success.html",
+            total_amount=total_amount,
+            total_count=total_count
+        )
+
+    return render_template(
+        "cart/checkout.html",
+        items=items,
+        total_amount=total_amount,
+        total_count=total_count,
+        user=session.get("user")
+    )

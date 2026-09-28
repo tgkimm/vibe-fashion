@@ -16,11 +16,13 @@
                 </div>
 
                 <form method="POST" action="{{ url_for('auth.login') }}">
+                    <input type="hidden" name="next" value="{{ next or '' }}">
+
                     <div class="mb-3">
-                        <label for="email" class="form-label fw-semibold">이메일 주소</label>
+                        <label for="login_id" class="form-label fw-semibold">아이디 또는 이메일</label>
                         <div class="input-group">
-                            <span class="input-group-text bg-light border-end-0"><i class="bi bi-envelope text-muted"></i></span>
-                            <input type="email" class="form-control border-start-0 ps-0" id="email" name="email" value="{{ email or '' }}" placeholder="example@domain.com" required autofocus>
+                            <span class="input-group-text bg-light border-end-0"><i class="bi bi-person text-muted"></i></span>
+                            <input type="text" class="form-control border-start-0 ps-0" id="login_id" name="login_id" value="{{ login_id or '' }}" placeholder="아이디 또는 이메일 주소" required autofocus>
                         </div>
                     </div>
 
