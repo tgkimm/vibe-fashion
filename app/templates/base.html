@@ -29,10 +29,13 @@
                         <a class="nav-link active" aria-current="page" href="{{ url_for('main.index') }}">홈</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('main.index') }}#products">신상품</a>
+                        <a class="nav-link" href="{{ url_for('main.index') }}#popular-products">베스트</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('main.index') }}#products">베스트</a>
+                        <a class="nav-link" href="{{ url_for('main.index') }}#new-products">신상품</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('main.product_list', tab='all') }}">전체상품</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('main.index') }}#about">브랜드 소개</a>

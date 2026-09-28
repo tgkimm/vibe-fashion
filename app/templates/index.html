@@ -13,27 +13,36 @@
                     매일 새로운 스타일링 아이디어를 제안합니다.
                 </p>
                 <div class="d-flex justify-content-center gap-3">
-                    <a href="#products" class="btn btn-primary btn-lg px-4 shadow-sm">지금 쇼핑하기</a>
-                    <a href="#about" class="btn btn-outline-light btn-lg px-4">컬렉션 보기</a>
+                    <a href="#popular-products" class="btn btn-primary btn-lg px-4 shadow-sm">지금 쇼핑하기</a>
+                    <a href="#new-products" class="btn btn-outline-light btn-lg px-4">신상품 컬렉션</a>
                 </div>
             </div>
         </div>
     </div>
 </section>
 
-<!-- ② 더미 상품 카드 섹션 (picsum.photos 활용) -->
-<section id="products" class="py-5">
+<!-- ② 인기 상품 섹션 (최대 8개) -->
+<section id="popular-products" class="py-5">
     <div class="container">
         <!-- 섹션 타이틀 -->
-        <div class="text-center mb-5">
-            <h2 class="fw-bold">인기 상품</h2>
-            <p class="text-muted">지금 고객님들이 가장 많이 찾는 트렌디 아이템을 확인해보세요</p>
-            <div class="divider mx-auto"></div>
+        <div class="d-flex justify-content-between align-items-end mb-4 flex-wrap gap-2">
+            <div>
+                <span class="badge bg-danger bg-opacity-10 text-danger fw-bold px-3 py-1 rounded-pill mb-2">BEST SELLERS</span>
+                <h2 class="fw-bold mb-1">인기 상품</h2>
+                <p class="text-muted mb-0 small">지금 고객님들이 가장 많이 찾는 트렌디 아이템을 확인해보세요</p>
+            </div>
+            {% if has_more_popular %}
+            <div>
+                <a href="{{ url_for('main.product_list', tab='popular') }}" class="btn btn-outline-dark btn-sm rounded-pill px-3 py-2 fw-semibold">
+                    인기 상품 더보기 <i class="bi bi-chevron-right ms-1"></i>
+                </a>
+            </div>
+            {% endif %}
         </div>
 
-        <!-- 상품 카드 그리드 -->
+        <!-- 상품 카드 그리드 (인기 상품) -->
         <div class="row g-4">
-            {% for item in products %}
+            {% for item in popular_products %}
             <div class="col-12 col-sm-6 col-lg-3">
                 <div class="card h-100 product-card shadow-sm border-0">
                     <!-- 상품 이미지 -->
@@ -74,7 +83,81 @@
             <!-- 등록된 상품이 없을 경우 -->
             <div class="col-12 text-center py-5">
                 <i class="bi bi-bag-x fs-1 text-muted mb-3 d-block"></i>
-                <p class="text-muted">현재 진열 중인 상품이 없습니다.</p>
+                <p class="text-muted">현재 진열 중인 인기 상품이 없습니다.</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- ③ 신상품 섹션 (어느 정도의 여유 공간 my-5 / py-5 적용, 최대 8개) -->
+<section id="new-products" class="py-5 bg-white border-top border-bottom">
+    <div class="container">
+        <!-- 섹션 타이틀 -->
+        <div class="d-flex justify-content-between align-items-end mb-4 flex-wrap gap-2">
+            <div>
+                <span class="badge bg-primary bg-opacity-10 text-primary fw-bold px-3 py-1 rounded-pill mb-2">NEW ARRIVALS</span>
+                <h2 class="fw-bold mb-1">신상품</h2>
+                <p class="text-muted mb-0 small">이번 시즌 새롭게 입고된 감각적인 긴 팔 티셔츠와 다양한 가방 라인업</p>
+            </div>
+            {% if has_more_new %}
+            <div>
+                <a href="{{ url_for('main.product_list', tab='new') }}" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-2 fw-semibold">
+                    신상품 더보기 <i class="bi bi-chevron-right ms-1"></i>
+                </a>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- 상품 카드 그리드 (신상품) -->
+        <div class="row g-4">
+            {% for item in new_products %}
+            <div class="col-12 col-sm-6 col-lg-3">
+                <div class="card h-100 product-card shadow-sm border-0">
+                    <!-- 신상품 뱃지 -->
+                    <span class="position-absolute top-0 start-0 m-2 badge bg-dark text-white rounded-pill px-2 py-1 shadow-sm" style="z-index: 2; font-size: 0.75rem;">
+                        NEW
+                    </span>
+
+                    <!-- 상품 이미지 -->
+                    <div class="position-relative overflow-hidden product-image-wrapper">
+                        <img src="{{ item.thumbnail_url }}" class="card-img-top product-img" alt="{{ item.name }}" loading="lazy" onerror="this.onerror=null; this.src='https://picsum.photos/600/800';">
+                    </div>
+
+                    <!-- 상품 정보 본문 -->
+                    <div class="card-body d-flex flex-column">
+                        <h5 class="card-title fw-bold text-truncate" title="{{ item.name }}">{{ item.name }}</h5>
+                        <p class="card-text text-secondary small flex-grow-1 text-truncate-2">
+                            {{ item.description }}
+                        </p>
+                        <div class="d-flex justify-content-between align-items-center mt-3">
+                            <span class="fs-5 fw-bold text-primary">{{ item.price }}</span>
+                            <button class="btn btn-outline-dark btn-sm rounded-circle p-2 btn-add-cart" 
+                                    data-product-id="{{ item.id }}" 
+                                    data-product-name="{{ item.name }}" 
+                                    title="장바구니 담기" 
+                                    type="button">
+                                <i class="bi bi-cart-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 카드 하단 버튼 -->
+                    <div class="card-footer bg-transparent border-0 pt-0 pb-3">
+                        <button class="btn btn-dark w-100 btn-sm py-2 fw-semibold btn-buy-now" 
+                                data-product-id="{{ item.id }}" 
+                                data-product-name="{{ item.name }}" 
+                                type="button">
+                            바로 구매하기
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <!-- 등록된 상품이 없을 경우 -->
+            <div class="col-12 text-center py-5">
+                <i class="bi bi-bag-x fs-1 text-muted mb-3 d-block"></i>
+                <p class="text-muted">현재 진열 중인 신상품이 없습니다.</p>
             </div>
             {% endfor %}
         </div>
