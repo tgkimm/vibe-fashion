@@ -1,0 +1,26 @@
+# Python 캐시 및 가상환경
+__pycache__/
+*.pyc
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+ENV/
+
+# 환경 변수 파일
+.env
+
+# 로그 및 OS 파일
+*.log
+.DS_Store
+
+# 배포 및 빌드 산출물
+dist/
+build/
+*.egg-info/
+
+# IDE 및 에디터 설정
+.vscode/
+.idea/
+*.swp

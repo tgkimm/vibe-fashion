@@ -1,0 +1,287 @@
+/* ==========================================================================
+   1. Google Fonts 및 브랜드 전역 변수 설정
+   ========================================================================== */
+/* Google Fonts: 본문용 Noto Sans KR, 영문/포인트용 Playfair Display, 로고용 Arvo */
+@import url('https://fonts.googleapis.com/css2?family=Arvo:wght@400;700&family=Noto+Sans+KR:wght@300;400;500;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
+
+:root {
+    /* Young Fit 브랜드 메인 컬러 팔레트 */
+    --color-navy: #1a2a4a;        /* 딥 네이비 (메인 무드) */
+    --color-navy-dark: #0f1a2e;   /* 다크 네이비 (배경 그라디언트용) */
+    --color-coral: #ff6b5b;       /* 코랄 (포인트/CTA/할인) */
+    --color-coral-hover: #e85545; /* 코랄 호버 색상 */
+    --color-bg-light: #f8f9fa;    /* 밝은 배경색 */
+    --color-text-main: #212529;   /* 기본 텍스트 */
+    --font-sans: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-serif: 'Playfair Display', Georgia, serif;
+    --font-logo: 'Arvo', serif;   /* 로고용 Arvo 폰트 */
+}
+
+body {
+    font-family: var(--font-sans);
+    letter-spacing: -0.3px;
+    color: var(--color-text-main);
+    background-color: var(--color-bg-light);
+}
+
+/* 상단 브랜드 로고: Arvo 폰트 및 쇼핑백 아이콘 컬러 적용 */
+.navbar-brand {
+    font-family: var(--font-logo) !important;
+    font-weight: 700;
+    letter-spacing: 1px;
+}
+
+.navbar-brand .logo-icon {
+    color: var(--color-coral);
+    margin-right: 0.4rem;
+    font-size: 1.25rem;
+    vertical-align: -1px;
+}
+
+.hero-section h1 {
+    font-family: var(--font-serif);
+}
+
+.navbar {
+    background-color: var(--color-navy) !important;
+}
+
+/* 상단 네비게이션 로그인 버튼 코랄색 스타일 */
+.navbar .btn-primary {
+    background-color: var(--color-coral) !important;
+    border-color: var(--color-coral) !important;
+    color: #ffffff !important;
+    font-weight: 600;
+    border-radius: 6px;
+    transition: all 0.2s ease-in-out;
+}
+
+.navbar .btn-primary:hover {
+    background-color: var(--color-coral-hover) !important;
+    border-color: var(--color-coral-hover) !important;
+    box-shadow: 0 4px 12px rgba(255, 107, 91, 0.35);
+}
+
+.tracking-wider {
+    letter-spacing: 1.5px;
+}
+
+/* ==========================================================================
+   2. 히어로 섹션 (Hero Section)
+   ========================================================================== */
+/* 딥 네이비(#1a2a4a)에서 검은색(#0a0d14)으로 떨어지는 그라디언트 배경 */
+.hero-section {
+    background: linear-gradient(135deg, rgba(26, 42, 74, 0.95) 0%, rgba(10, 13, 20, 0.98) 100%),
+                url('https://picsum.photos/id/1053/1600/900') center/cover no-repeat;
+    min-height: 520px;
+    padding: 80px 0;
+    position: relative;
+}
+
+/* 슬로건 텍스트 가독성 및 세련된 타이포그래피 */
+.hero-section h1 {
+    font-size: 3.2rem;
+    font-weight: 700;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    word-break: keep-all;
+}
+
+/* 기존 h1 텍스트 대신 슬로건 "당신의 일상을 스타일리시하게" 중앙 배치 */
+.hero-section h1 {
+    font-size: 0; /* 기존 텍스트 숨김 */
+}
+
+.hero-section h1::after {
+    content: "당신의 일상을 스타일리시하게";
+    display: block;
+    font-size: 3.2rem;
+    font-family: var(--font-sans);
+    font-weight: 700;
+    line-height: 1.3;
+    letter-spacing: -1px;
+    color: #ffffff;
+    text-align: center;
+}
+
+/* 히어로 섹션 서브 텍스트 */
+.hero-section .lead {
+    font-size: 1.25rem;
+    font-weight: 400;
+    line-height: 1.7;
+    color: #e2e8f0;
+    text-align: center;
+}
+
+/* "지금 쇼핑하기" CTA 버튼 (코랄 포인트 컬러) */
+.hero-section .btn-primary,
+.btn-coral {
+    background-color: var(--color-coral) !important;
+    border-color: var(--color-coral) !important;
+    color: #ffffff !important;
+    font-weight: 600;
+    padding: 12px 28px;
+    border-radius: 50px;
+    transition: all 0.25s ease-in-out;
+}
+
+.hero-section .btn-primary:hover,
+.btn-coral:hover {
+    background-color: var(--color-coral-hover) !important;
+    border-color: var(--color-coral-hover) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(255, 107, 91, 0.35) !important;
+}
+
+.hero-section .btn-outline-light {
+    border-radius: 50px;
+    padding: 12px 28px;
+    font-weight: 500;
+}
+
+/* 섹션 구분선 */
+.divider {
+    width: 60px;
+    height: 3px;
+    background-color: var(--color-coral);
+    border-radius: 2px;
+    margin-top: 12px;
+}
+
+/* ==========================================================================
+   3. 상품 카드 (Product Card)
+   ========================================================================== */
+.product-card {
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    border-radius: 14px;
+    overflow: hidden;
+    background-color: #ffffff;
+}
+
+/* 호버 시 그림자 대폭 강화 및 2% 확대 (scale 1.02) */
+.product-card:hover {
+    transform: scale(1.02) translateY(-4px);
+    box-shadow: 0 16px 32px rgba(26, 42, 74, 0.18) !important;
+}
+
+/* 카드 이미지 래퍼 */
+.product-image-wrapper {
+    position: relative;
+    height: 280px;
+    background-color: #f1f3f5;
+    overflow: hidden;
+}
+
+.product-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.35s ease;
+}
+
+.product-card:hover .product-img {
+    transform: scale(1.04);
+}
+
+/* 할인/이벤트 배지 스타일 (코랄 배경 + 흰색 텍스트) */
+.product-card .badge,
+.product-image-wrapper .badge {
+    background-color: var(--color-coral) !important;
+    color: #ffffff !important;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+/* 가격 텍스트: 굵기 대폭 증가 및 컬러 강조 */
+.product-card .card-body .fs-5,
+.product-card .text-primary {
+    color: var(--color-navy) !important;
+    font-weight: 800 !important; /* 가격 텍스트 굵기 증가 */
+    font-size: 1.3rem !important;
+    letter-spacing: -0.5px;
+}
+
+/* 구매/장바구니 버튼 스타일링 */
+.product-card .card-footer .btn-dark {
+    background-color: var(--color-navy);
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    transition: background-color 0.2s ease;
+}
+
+.product-card .card-footer .btn-dark:hover {
+    background-color: var(--color-coral);
+}
+
+.product-card .btn-outline-dark {
+    color: var(--color-navy);
+    border-color: #dee2e6;
+}
+
+.product-card .btn-outline-dark:hover {
+    background-color: var(--color-coral);
+    border-color: var(--color-coral);
+    color: #ffffff;
+}
+
+/* 2줄 초과 텍스트 말줄임표 처리 */
+.text-truncate-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* ==========================================================================
+   4. 브랜드 소개 / 혜택 섹션 아이콘 스타일
+   ========================================================================== */
+#about .bi {
+    color: var(--color-coral) !important;
+    transition: transform 0.25s ease;
+}
+
+#about .col-md-4:hover .bi {
+    transform: translateY(-4px);
+}
+
+/* ==========================================================================
+   5. 반응형 레이아웃 미디어 쿼리 (모바일 ≤ 768px 최적화)
+   ========================================================================== */
+/* 모바일 디바이스 (768px 이하) */
+@media (max-width: 768px) {
+    .hero-section {
+        min-height: 400px;
+        padding: 50px 15px;
+    }
+
+    .hero-section h1::after {
+        font-size: 2rem; /* 모바일 화면에 맞춰 슬로건 크기 자동 축소 */
+    }
+
+    .hero-section .lead {
+        font-size: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .hero-section .d-flex {
+        flex-direction: column;
+        gap: 10px !important;
+    }
+
+    .hero-section .btn {
+        width: 100%; /* 버튼 가로 꽉 차게 */
+    }
+
+    .product-image-wrapper {
+        height: 220px; /* 모바일에서 이미지 높이 최적화 */
+    }
+
+    /* 카드 여백 및 텍스트 조정 */
+    .product-card .card-body {
+        padding: 1rem;
+    }
+}
