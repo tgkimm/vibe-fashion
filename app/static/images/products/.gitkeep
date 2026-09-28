@@ -1,0 +1,9 @@
+# 상품 이미지 폴더 (Product Images)
+
+이 폴더에 상품 사진 파일(jpg, png, webp 등)을 저장하여 사용할 수 있습니다.
+
+### 정적 파일 서빙 경로 예시
+Flask 템플릿(`html`)에서 다음과 같이 참조할 수 있습니다:
+```html
+<img src="{{ url_for('static', filename='images/products/sample.jpg') }}" alt="상품 이미지">
+```

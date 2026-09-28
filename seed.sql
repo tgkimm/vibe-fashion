@@ -163,23 +163,22 @@ BEGIN
     END LOOP;
 
     -- ----------------------------------------------------
-    -- 4. 상품 썸네일 이미지 등록 (picsum.photos 무료 이미지)
+    -- 4. 상품 썸네일 이미지 등록
     -- ----------------------------------------------------
     -- 상품 1: 베이직 크롭 티셔츠
     INSERT INTO public.product_images (product_id, image_url, is_primary, sort_order)
     VALUES 
-        (v_prod_crop_id, 'https://picsum.photos/id/1062/600/800', true, 1),
-        (v_prod_crop_id, 'https://picsum.photos/id/1059/600/800', false, 2);
+        (v_prod_crop_id, '/static/images/products/basic-crop-tshirt.jpg', true, 1);
 
     -- 상품 2: 와이드 데님 팬츠
     INSERT INTO public.product_images (product_id, image_url, is_primary, sort_order)
     VALUES 
-        (v_prod_pants_id, 'https://picsum.photos/id/1070/600/800', true, 1);
+        (v_prod_pants_id, '/static/images/products/wide-denim.jpg', true, 1);
 
     -- 상품 3: 오버핏 코튼 자켓
     INSERT INTO public.product_images (product_id, image_url, is_primary, sort_order)
     VALUES 
-        (v_prod_jacket_id, 'https://picsum.photos/id/1058/600/800', true, 1);
+        (v_prod_jacket_id, '/static/images/products/cotton-jacket.webp', true, 1);
 
     -- 상품 4: 플로럴 미디 원피스
     INSERT INTO public.product_images (product_id, image_url, is_primary, sort_order)
