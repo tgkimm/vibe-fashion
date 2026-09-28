@@ -31,7 +31,7 @@
             <div class="divider mx-auto"></div>
         </div>
 
-        <!-- 상품 카드 그리드 (최대 4개) -->
+        <!-- 상품 카드 그리드 -->
         <div class="row g-4">
             {% for item in products %}
             <div class="col-12 col-sm-6 col-lg-3">
@@ -49,7 +49,11 @@
                         </p>
                         <div class="d-flex justify-content-between align-items-center mt-3">
                             <span class="fs-5 fw-bold text-primary">{{ item.price }}</span>
-                            <button class="btn btn-outline-dark btn-sm rounded-circle p-2" title="장바구니 담기" type="button">
+                            <button class="btn btn-outline-dark btn-sm rounded-circle p-2 btn-add-cart" 
+                                    data-product-id="{{ item.id }}" 
+                                    data-product-name="{{ item.name }}" 
+                                    title="장바구니 담기" 
+                                    type="button">
                                 <i class="bi bi-cart-plus"></i>
                             </button>
                         </div>
@@ -57,7 +61,10 @@
 
                     <!-- 카드 하단 버튼 -->
                     <div class="card-footer bg-transparent border-0 pt-0 pb-3">
-                        <button class="btn btn-dark w-100 btn-sm py-2 fw-semibold" type="button">
+                        <button class="btn btn-dark w-100 btn-sm py-2 fw-semibold btn-buy-now" 
+                                data-product-id="{{ item.id }}" 
+                                data-product-name="{{ item.name }}" 
+                                type="button">
                             바로 구매하기
                         </button>
                     </div>
@@ -96,4 +103,93 @@
         </div>
     </div>
 </section>
+
+<!-- 장바구니 담기 토스트 알림 (Toast) -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1080;">
+    <div id="cartToast" class="toast align-items-center text-bg-dark border-0" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+            <div class="toast-body d-flex align-items-center gap-2">
+                <i class="bi bi-check-circle-fill text-success fs-5"></i>
+                <span id="toastMessage">상품이 장바구니에 담겼습니다.</span>
+            </div>
+            <div class="d-flex align-items-center me-2">
+                <a href="{{ url_for('cart.view_cart') }}" class="btn btn-sm btn-outline-light me-2">장바구니 보기</a>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const toastElement = document.getElementById("cartToast");
+    const toast = new bootstrap.Toast(toastElement, { delay: 3500 });
+    const toastMessage = document.getElementById("toastMessage");
+    const cartBadge = document.getElementById("nav-cart-badge");
+
+    // 장바구니 담기 버튼 처리
+    document.querySelectorAll(".btn-add-cart").forEach(button => {
+        button.addEventListener("click", () => {
+            const productId = button.dataset.productId;
+            const productName = button.dataset.productName;
+
+            button.disabled = true;
+
+            fetch("{{ url_for('cart.add_to_cart') }}", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ product_id: productId, quantity: 1 })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    if (cartBadge) {
+                        cartBadge.textContent = data.cart_count;
+                    }
+                    toastMessage.textContent = data.message || `'${productName}'이(가) 장바구니에 담겼습니다.`;
+                    toast.show();
+                } else {
+                    alert(data.message || "장바구니 담기에 실패했습니다.");
+                }
+            })
+            .catch(err => {
+                console.error("장바구니 담기 오류:", err);
+                alert("네트워크 통신 중 오류가 발생했습니다.");
+            })
+            .finally(() => {
+                button.disabled = false;
+            });
+        });
+    });
+
+    // 바로 구매하기 버튼 처리 (장바구니 담은 후 장바구니로 이동)
+    document.querySelectorAll(".btn-buy-now").forEach(button => {
+        button.addEventListener("click", () => {
+            const productId = button.dataset.productId;
+
+            button.disabled = true;
+
+            fetch("{{ url_for('cart.add_to_cart') }}", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ product_id: productId, quantity: 1 })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.href = "{{ url_for('cart.view_cart') }}";
+                } else {
+                    alert(data.message || "구매 처리 중 오류가 발생했습니다.");
+                    button.disabled = false;
+                }
+            })
+            .catch(err => {
+                console.error("바로 구매 오류:", err);
+                alert("네트워크 통신 중 오류가 발생했습니다.");
+                button.disabled = false;
+            });
+        });
+    });
+});
+</script>
 {% endblock %}

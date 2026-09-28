@@ -47,14 +47,12 @@ def index():
     try:
         supabase = get_supabase_client()
         if supabase:
-            # products 및 연결된 product_images 조회
+            # products 및 연결된 product_images 조회 (전체 활성 상품 조회)
             response = (
                 supabase.table("products")
                 .select("id, name, description, price, sale_price, is_active, is_featured, product_images(image_url, is_primary, sort_order)")
                 .eq("is_active", True)
-                .eq("is_featured", True)
-                .order("created_at", desc=True)
-                .limit(4)
+                .order("created_at", desc=False)
                 .execute()
             )
 

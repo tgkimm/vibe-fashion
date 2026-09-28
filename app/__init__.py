@@ -18,6 +18,20 @@ def create_app():
 
     # 3. 블루프린트(라우트 분리) 등록
     from app.routes.main import main_bp
+    from app.routes.auth import auth_bp
+    from app.routes.cart import cart_bp
+
     app.register_blueprint(main_bp)
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(cart_bp)
+
+    # 4. 템플릿 전역 변수 및 컨텍스트 프로세서 등록
+    @app.context_processor
+    def inject_cart_count():
+        from flask import session
+        cart = session.get("cart", {})
+        total_count = sum(item.get("quantity", 1) for item in cart.values())
+        current_user = session.get("user")
+        return {"cart_count": total_count, "current_user": current_user}
 
     return app

@@ -28,11 +28,16 @@ DECLARE
     v_bottom_id BIGINT;
     v_outer_id BIGINT;
     v_dress_id BIGINT;
+    v_shoes_id BIGINT;
+    v_acc_id BIGINT;
     
     v_prod_crop_id UUID;
     v_prod_pants_id UUID;
     v_prod_jacket_id UUID;
     v_prod_dress_id UUID;
+    v_prod_shoes_id UUID;
+    v_prod_coat_id UUID;
+    v_prod_hat_id UUID;
 
     colors TEXT[] := ARRAY['블랙', '화이트', '베이지'];
     sizes TEXT[] := ARRAY['S', 'M', 'L'];
@@ -44,6 +49,8 @@ BEGIN
     SELECT id INTO v_bottom_id FROM public.categories WHERE slug = 'bottom';
     SELECT id INTO v_outer_id FROM public.categories WHERE slug = 'outer';
     SELECT id INTO v_dress_id FROM public.categories WHERE slug = 'dress';
+    SELECT id INTO v_shoes_id FROM public.categories WHERE slug = 'shoes';
+    SELECT id INTO v_acc_id FROM public.categories WHERE slug = 'acc';
 
     -- 상품 1: 베이직 크롭 티셔츠 (정가 29,900원, 판매/할인가 19,900원)
     INSERT INTO public.products (category_id, name, description, price, sale_price, is_active, is_featured)
@@ -97,6 +104,45 @@ BEGIN
     )
     RETURNING id INTO v_prod_dress_id;
 
+    -- 상품 5: 클래식 레더 스니커즈 (신발 - 69,000원)
+    INSERT INTO public.products (category_id, name, description, price, sale_price, is_active, is_featured)
+    VALUES (
+        v_shoes_id, 
+        '클래식 레더 스니커즈', 
+        '깔끔하고 편안한 착화감의 데일리 레더 스니커즈입니다.', 
+        79000, 
+        69000, 
+        true,
+        true
+    )
+    RETURNING id INTO v_prod_shoes_id;
+
+    -- 상품 6: 울 블렌드 싱글 코트 (코트 - 129,000원)
+    INSERT INTO public.products (category_id, name, description, price, sale_price, is_active, is_featured)
+    VALUES (
+        v_outer_id, 
+        '울 블렌드 싱글 코트', 
+        '보온성과 스타일을 겸비한 모던한 핏의 프리미엄 싱글 코트입니다.', 
+        149000, 
+        129000, 
+        true,
+        true
+    )
+    RETURNING id INTO v_prod_coat_id;
+
+    -- 상품 7: 코튼 베이직 볼캡 모자 (모자 - 19,000원)
+    INSERT INTO public.products (category_id, name, description, price, sale_price, is_active, is_featured)
+    VALUES (
+        v_acc_id, 
+        '코튼 베이직 볼캡 모자', 
+        '어디에나 자연스럽게 매치하기 좋은 사계절 데일리 코튼 볼캡입니다.', 
+        25000, 
+        19000, 
+        true,
+        true
+    )
+    RETURNING id INTO v_prod_hat_id;
+
     -- ----------------------------------------------------
     -- 3. 첫 번째 상품(베이직 크롭 티셔츠) 옵션 9개 등록
     -- (블랙/화이트/베이지 × S/M/L)
@@ -139,5 +185,20 @@ BEGIN
     INSERT INTO public.product_images (product_id, image_url, is_primary, sort_order)
     VALUES 
         (v_prod_dress_id, 'https://picsum.photos/id/1069/600/800', true, 1);
+
+    -- 상품 5: 클래식 레더 스니커즈 (신발)
+    INSERT INTO public.product_images (product_id, image_url, is_primary, sort_order)
+    VALUES 
+        (v_prod_shoes_id, 'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=600&auto=format&fit=crop&q=80', true, 1);
+
+    -- 상품 6: 울 블렌드 싱글 코트 (코트)
+    INSERT INTO public.product_images (product_id, image_url, is_primary, sort_order)
+    VALUES 
+        (v_prod_coat_id, 'https://images.unsplash.com/photo-1539533018447-63fcce667883?w=600&auto=format&fit=crop&q=80', true, 1);
+
+    -- 상품 7: 코튼 베이직 볼캡 모자 (모자)
+    INSERT INTO public.product_images (product_id, image_url, is_primary, sort_order)
+    VALUES 
+        (v_prod_hat_id, 'https://images.unsplash.com/photo-1588850561407-ed78c282e89b?w=600&auto=format&fit=crop&q=80', true, 1);
 
 END $$;
