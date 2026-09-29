@@ -256,6 +256,7 @@ def kakao_login():
     - Supabase signInWithOAuth를 통해 카카오 인증 URL 생성 후 리다이렉트
     - 인증 완료 후 콜백 주소: KAKAO_REDIRECT_URI 환경변수가 있으면 우선 사용, 없으면 {SITE_URL}/auth/confirm
     - PKCE code_verifier를 Flask 세션에 저장하여 콜백 시 검증할 수 있도록 지원
+    - prompt='select_account': 탈퇴 후 재가입 또는 재로그인 시 자동 로그인을 방지하고 계정 선택/동의창 표시
     """
     supabase = get_supabase_client()
     if not supabase:
@@ -272,7 +273,10 @@ def kakao_login():
         res = supabase.auth.sign_in_with_oauth({
             "provider": "kakao",
             "options": {
-                "redirect_to": redirect_to
+                "redirect_to": redirect_to,
+                "query_params": {
+                    "prompt": "select_account"
+                }
             }
         })
 
@@ -296,6 +300,7 @@ def naver_login():
     네이버 OAuth 로그인 시작:
     - NAVER_CLIENT_ID, NAVER_REDIRECT_URI를 읽어 네이버 인증 페이지로 리다이렉트
     - CSRF 방지를 위한 state 토큰 생성 및 Flask session 저장
+    - auth_type='reprompt': 탈퇴 후 재가입 또는 재로그인 시 기존 동의 세션을 재사용하지 않고 처음부터 권한 동의창 표시
     """
     client_id = os.getenv("NAVER_CLIENT_ID")
     if not client_id or "your_naver" in client_id:
@@ -317,7 +322,8 @@ def naver_login():
         "response_type": "code",
         "client_id": client_id.strip(),
         "redirect_uri": redirect_uri,
-        "state": state
+        "state": state,
+        "auth_type": "reprompt"
     }
     naver_auth_url = f"https://nid.naver.com/oauth2.0/authorize?{urllib.parse.urlencode(params)}"
     return redirect(naver_auth_url)
@@ -462,6 +468,7 @@ def naver_callback():
             "name": nickname,
             "real_name": real_name,
         }
+        session["naver_access_token"] = naver_access_token
         session.permanent = True
         return redirect(url_for("auth.mypage"))
 
@@ -1206,6 +1213,7 @@ def update_profile():
 def delete_account():
     """
     회원 탈퇴:
+    - 소셜 연동 해제 (카카오/네이버 연동 해제 API 호출)
     - 로그인된 본인 계정(profiles 및 auth.users)을 삭제하고 세션 종료
     """
     user_info = session.get("user")
@@ -1213,12 +1221,60 @@ def delete_account():
         return redirect(url_for("auth.login", error="login_required"))
 
     user_id = user_info["id"]
+    supabase = get_supabase_client()
+    admin_client = get_supabase_admin_client()
+
+    # 1. 소셜 로그인 연결 해제 (카카오 / 네이버)
+    # (1) 카카오 연결 끊기 (/v1/user/unlink)
+    kakao_admin_key = os.getenv("KAKAO_ADMIN_KEY") or os.getenv("KAKAO_REST_API_KEY")
+    if admin_client and kakao_admin_key:
+        try:
+            target_user = admin_client.auth.admin.get_user_by_id(user_id)
+            if target_user and getattr(target_user, "user", None):
+                user_obj = target_user.user
+                identities = getattr(user_obj, "identities", []) or []
+                kakao_identity = next((i for i in identities if getattr(i, "provider", "") == "kakao"), None)
+                if kakao_identity:
+                    identity_data = getattr(kakao_identity, "identity_data", {}) or {}
+                    kakao_user_id = getattr(kakao_identity, "id", None) or identity_data.get("sub") or identity_data.get("provider_id")
+                    if kakao_user_id:
+                        unlink_req = urllib.request.Request(
+                            "https://kapi.kakao.com/v1/user/unlink",
+                            data=urllib.parse.urlencode({"target_id_type": "user_id", "target_id": kakao_user_id}).encode("utf-8"),
+                            headers={
+                                "Authorization": f"KakaoAK {kakao_admin_key.strip()}",
+                                "Content-Type": "application/x-www-form-urlencoded"
+                            }
+                        )
+                        with urllib.request.urlopen(unlink_req) as resp:
+                            logger.info(f"[카카오 회원 탈퇴 연동 해제 성공] status: {resp.status}")
+        except Exception as ke:
+            logger.warning(f"[카카오 탈퇴 연동 해제 경고] {ke}")
+
+    # (2) 네이버 연동 해제 (service_delete)
+    naver_access_token = session.get("naver_access_token")
+    naver_client_id = os.getenv("NAVER_CLIENT_ID", "").strip()
+    naver_client_secret = os.getenv("NAVER_CLIENT_SECRET", "").strip()
+    if naver_access_token and naver_client_id and naver_client_secret:
+        try:
+            delete_params = {
+                "grant_type": "delete",
+                "client_id": naver_client_id,
+                "client_secret": naver_client_secret,
+                "access_token": naver_access_token,
+                "service_provider": "NAVER"
+            }
+            del_req = urllib.request.Request(
+                f"https://nid.naver.com/oauth2.0/token?{urllib.parse.urlencode(delete_params)}",
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
+            with urllib.request.urlopen(del_req) as del_resp:
+                logger.info(f"[네이버 회원 탈퇴 연동 해제 응답] {del_resp.read().decode('utf-8')}")
+        except Exception as ne:
+            logger.warning(f"[네이버 탈퇴 연동 해제 경고] {ne}")
 
     try:
-        # 1. profiles 및 연관 데이터 정리
-        supabase = get_supabase_client()
-        admin_client = get_supabase_admin_client()
-
+        # 2. profiles 및 연관 데이터 정리
         # profiles 테이블 데이터 삭제
         if admin_client:
             try:
@@ -1234,7 +1290,7 @@ def delete_account():
             except Exception as e:
                 logger.warning(f"[프로필 삭제 경고] {e}")
 
-        # 2. 세션 정리
+        # 3. 세션 정리
         session.clear()
         return redirect(url_for("auth.login", msg="account_deleted"))
 
