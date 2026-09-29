@@ -108,6 +108,9 @@ def get_error_message(code: str) -> str:
         "token_required": "인증 토큰 또는 링크 정보가 누락되었습니다.",
         "reset_failed": "비밀번호 재설정 처리 중 오류가 발생했습니다. 이메일과 인증코드를 확인해 주세요.",
         "auth_error": "인증 서비스 연결에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+        "rate_limit": "이메일 발송 한도를 초과했습니다. 잠시 후(또는 1시간 후) 다시 시도해 주세요.",
+        "user_already_exists": "이미 등록된 이메일 주소입니다. 로그인하거나 비밀번호 찾기를 이용해 주세요.",
+        "smtp_error": "SMTP 메일 서버 연결에 실패했습니다. Supabase의 SMTP 설정을 확인해 주세요.",
         "login_required": "로그인이 필요한 서비스입니다.",
         "delete_failed": "회원 탈퇴 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
     }
@@ -302,13 +305,21 @@ def signup():
 
         except Exception as e:
             logger.error(f"[회원가입 오류] {e}", exc_info=True)
-            return redirect(url_for("auth.signup", error="auth_error", email=email, name=name))
+            err_str = str(e).lower()
+            if "rate limit" in err_str or "over_email_send_rate_limit" in err_str:
+                return redirect(url_for("auth.signup", error="rate_limit", email=email, name=name))
+            elif "user already registered" in err_str or "already registered" in err_str:
+                return redirect(url_for("auth.signup", error="user_already_exists", email=email, name=name))
+            elif "smtp" in err_str:
+                return redirect(url_for("auth.signup", error="smtp_error", email=email, name=name, detail=str(e)[:100]))
+            return redirect(url_for("auth.signup", error="auth_error", email=email, name=name, detail=str(e)[:100]))
 
+    custom_error = request.args.get("detail") if error_code == "auth_error" and request.args.get("detail") else error_msg
     return render_template(
         "auth/register.html",
         email=request.args.get("email", ""),
         name=request.args.get("name", ""),
-        error_msg=error_msg
+        error_msg=custom_error
     )
 
 
