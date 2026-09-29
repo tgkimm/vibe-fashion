@@ -14,9 +14,21 @@ auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
 def get_site_url() -> str:
     """
-    사이트 기본 URL을 환경 변수 SITE_URL에서 읽어옵니다.
-    기본값은 http://localhost:5000 입니다.
+    사이트 기본 URL을 결정합니다.
+    1. 환경 변수 SITE_URL이 명시적으로 설정되어 있으면 우선 사용
+    2. 그렇지 않고 현재 Flask 요청(request) 컨텍스트가 있으면 실제 유입된 host_url (예: Azure 배포 주소) 사용
+    3. 최후 fallback: os.getenv("SITE_URL", "http://localhost:5000")
     """
+    configured_url = os.getenv("SITE_URL")
+    if configured_url and configured_url.strip():
+        return configured_url.strip().rstrip("/")
+
+    try:
+        if request and request.host_url:
+            return request.host_url.rstrip("/")
+    except Exception:
+        pass
+
     return os.getenv("SITE_URL", "http://localhost:5000").rstrip("/")
 
 
