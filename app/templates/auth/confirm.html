@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}이메일 인증 | VIBE-FASHION{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-12 col-md-8 col-lg-5">
+            <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5 text-center">
+                <div class="spinner-border text-primary mb-3" role="status" id="confirmSpinner" style="width: 3rem; height: 3rem;">
+                    <span class="visually-hidden">인증 처리 중...</span>
+                </div>
+                <h4 class="fw-bold mb-2" id="confirmTitle">이메일 인증 확인 중...</h4>
+                <p class="text-muted small mb-3" id="confirmDesc">잠시만 기다려 주세요. 인증 정보를 확인하고 있습니다.</p>
+
+                <div id="confirmError" class="alert alert-danger d-none text-start small mb-3" role="alert">
+                    <i class="bi bi-exclamation-triangle me-1"></i><span id="errorMessage"></span>
+                </div>
+
+                <div id="manualInputSection" class="d-none text-start border-top pt-3 mt-2">
+                    <p class="small text-muted mb-2">인증코드를 직접 입력하여 인증할 수도 있습니다:</p>
+                    <form method="GET" action="{{ url_for('auth.confirm') }}" id="manualConfirmForm">
+                        <input type="hidden" name="type" value="signup">
+                        <div class="mb-2">
+                            <label class="form-label small fw-semibold">이메일</label>
+                            <input type="email" class="form-control form-control-sm" name="email" id="manualEmail" placeholder="가입한 이메일" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold">인증코드 (6자리 번호 또는 토큰)</label>
+                            <input type="text" class="form-control form-control-sm" name="token" id="manualToken" placeholder="인증코드 입력" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm w-100 py-2">인증 완료하기</button>
+                    </form>
+                </div>
+
+                <div class="mt-3">
+                    <a href="{{ url_for('auth.login') }}" class="btn btn-outline-secondary btn-sm rounded-3">로그인 페이지로 가기</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    // 1. URL 해시(#access_token=... 또는 #token=...) 파싱
+    const hash = window.location.hash.substring(1);
+    if (hash) {
+        const params = new URLSearchParams(hash);
+        const accessToken = params.get("access_token");
+        const refreshToken = params.get("refresh_token");
+        const tokenHash = params.get("token_hash");
+        const token = params.get("token");
+        const type = params.get("type") || "signup";
+        const errorCode = params.get("error_code");
+        const errorDesc = params.get("error_description");
+
+        if (errorCode || errorDesc) {
+            showError(errorDesc || errorCode);
+            return;
+        }
+
+        // access_token이 해시에 있는 경우 POST로 서버 세션에 저장 요청
+        if (accessToken) {
+            document.getElementById("confirmTitle").textContent = "인증 완료 처리 중...";
+            fetch("{{ url_for('auth.confirm_session') }}", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    access_token: accessToken,
+                    refresh_token: refreshToken,
+                    type: type
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    if (type === "recovery") {
+                        window.location.href = "{{ url_for('auth.reset_password') }}";
+                    } else {
+                        window.location.href = "{{ url_for('auth.mypage') }}";
+                    }
+                } else {
+                    showError(data.message || "인증 세션 처리 중 오류가 발생했습니다.");
+                }
+            })
+            .catch(err => {
+                showError("서버와의 통신에 실패했습니다.");
+            });
+            return;
+        }
+
+        if (tokenHash || token) {
+            const redirectUrl = new URL("{{ url_for('auth.confirm') }}", window.location.origin);
+            if (tokenHash) redirectUrl.searchParams.set("token_hash", tokenHash);
+            if (token) redirectUrl.searchParams.set("token", token);
+            redirectUrl.searchParams.set("type", type);
+            window.location.href = redirectUrl.toString();
+            return;
+        }
+    }
+
+    // 해시도 없고 쿼리 파라미터도 없는 경우 수동 입력 폼 표시
+    showManualInput("인증 링크의 파라미터가 누락되었습니다. 메일로 받은 6자리 인증코드나 토큰을 직접 입력해 주세요.");
+});
+
+function showError(msg) {
+    document.getElementById("confirmSpinner").classList.add("d-none");
+    document.getElementById("confirmTitle").textContent = "인증 실패";
+    document.getElementById("confirmDesc").textContent = "인증 링크 확인 중 문제가 발생했습니다.";
+    const errBox = document.getElementById("confirmError");
+    document.getElementById("errorMessage").textContent = msg;
+    errBox.classList.remove("d-none");
+    document.getElementById("manualInputSection").classList.remove("d-none");
+}
+
+function showManualInput(msg) {
+    document.getElementById("confirmSpinner").classList.add("d-none");
+    document.getElementById("confirmTitle").textContent = "이메일 인증 확인";
+    document.getElementById("confirmDesc").textContent = msg;
+    document.getElementById("manualInputSection").classList.remove("d-none");
+}
+</script>
+{% endblock %}

@@ -338,12 +338,17 @@ def confirm():
     [4] GET /auth/confirm - 이메일 인증 링크 클릭 처리
     - verify_otp 호출 → 성공 시 Flask session 저장 → /mypage
     - token_hash, token 또는 code 등 Supabase 파라미터 지원
+    - 파라미터가 URL 해시(#)로 전달된 경우를 대비해 confirm.html 템플릿 렌더링
     """
     token_hash = request.args.get("token_hash")
     token = request.args.get("token")
     otp_type = request.args.get("type", "signup")
     code = request.args.get("code")
     email = request.args.get("email")
+
+    # 만약 서버로 전달된 쿼리 파라미터가 하나도 없다면, Supabase Implicit flow 해시(#access_token=...)일 수 있으므로 confirm.html 렌더링
+    if not token_hash and not token and not code:
+        return render_template("auth/confirm.html")
 
     supabase = get_supabase_client()
     if not supabase:
@@ -376,8 +381,6 @@ def confirm():
                 "token_hash": token,
                 "type": otp_type
             })
-        else:
-            return redirect(url_for("auth.login", error="token_required"))
 
         if auth_response and auth_response.user:
             user = auth_response.user
@@ -398,7 +401,7 @@ def confirm():
                 session["access_token"] = auth_response.session.access_token
             session.permanent = True
 
-            # 비밀번호 재설정 확인 링크인 경우 새 비밀번호 설정 페이지로 분기 가능
+            # 비밀번호 재설정 확인 링크인 경우 새 비밀번호 설정 페이지로 이동
             if otp_type == "recovery":
                 return redirect(url_for("auth.reset_password"))
 
@@ -409,6 +412,52 @@ def confirm():
     except Exception as e:
         logger.error(f"[이메일 인증 오류] {e}", exc_info=True)
         return redirect(url_for("auth.login", error="invalid_token"))
+
+
+@auth_bp.route("/confirm-session", methods=["POST"])
+def confirm_session():
+    """
+    Supabase 해시(#access_token=...) 형태로 브라우저에 도달한 인증 세션을
+    서버 Flask 세션에 동기화하는 API
+    """
+    data = request.get_json(silent=True) or {}
+    access_token = data.get("access_token")
+    refresh_token = data.get("refresh_token")
+
+    if not access_token:
+        return jsonify({"success": False, "message": "인증 토큰이 전달되지 않았습니다."}), 400
+
+    supabase = get_supabase_client()
+    if not supabase:
+        return jsonify({"success": False, "message": "인증 서비스 연결 실패"}), 500
+
+    try:
+        user_response = supabase.auth.get_user(jwt=access_token)
+        if user_response and user_response.user:
+            user = user_response.user
+            user_metadata = getattr(user, "user_metadata", {}) or {}
+            display_name = (
+                user_metadata.get("name")
+                or user_metadata.get("full_name")
+                or (user.email.split("@")[0] if user.email else "회원")
+            )
+
+            session["user"] = {
+                "id": str(user.id),
+                "email": user.email,
+                "name": display_name,
+            }
+            session["access_token"] = access_token
+            if refresh_token:
+                session["refresh_token"] = refresh_token
+            session.permanent = True
+
+            return jsonify({"success": True})
+        else:
+            return jsonify({"success": False, "message": "유효하지 않은 인증 토큰입니다."}), 400
+    except Exception as e:
+        logger.error(f"[해시 세션 확인 오류] {e}", exc_info=True)
+        return jsonify({"success": False, "message": str(e)}), 500
 
 
 @auth_bp.route("/forgot-password", methods=["GET", "POST"])
