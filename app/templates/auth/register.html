@@ -33,13 +33,15 @@
                         <div class="form-text small text-muted">인증 링크가 발송될 유효한 이메일을 입력해 주세요.</div>
                     </div>
 
-                    <!-- 2. 이름 입력 -->
+                    <!-- 2. 닉네임 입력 -->
                     <div class="mb-3">
-                        <label for="name" class="form-label fw-semibold">이름 (선택)</label>
+                        <label for="name" class="form-label fw-semibold">닉네임 <span class="text-danger">*</span></label>
                         <div class="input-group">
                             <span class="input-group-text bg-light border-end-0"><i class="bi bi-person text-muted"></i></span>
-                            <input type="text" class="form-control border-start-0 ps-0" id="name" name="name" value="{{ request.args.get('name', '') or name or '' }}" placeholder="홍길동">
+                            <input type="text" class="form-control border-start-0 ps-0" id="name" name="name" value="{{ request.args.get('name', '') or name or '' }}" placeholder="닉네임 입력 (다른 회원과 중복 불가)" required>
+                            <button class="btn btn-outline-secondary" type="button" id="btnCheckNickname">중복 확인</button>
                         </div>
+                        <div id="nicknameFeedback" class="form-text small"></div>
                     </div>
 
                     <!-- 3. 비밀번호 입력 (보안 조건 실시간 표시) -->
@@ -120,6 +122,36 @@ document.addEventListener("DOMContentLoaded", () => {
 
     passwordInput.addEventListener("input", updatePasswordRules);
     confirmInput.addEventListener("input", checkMatch);
+
+    // 닉네임 중복 확인
+    const nameInput = document.getElementById("name");
+    const btnCheckNickname = document.getElementById("btnCheckNickname");
+    const nicknameFeedback = document.getElementById("nicknameFeedback");
+
+    btnCheckNickname.addEventListener("click", () => {
+        const nickname = nameInput.value.trim();
+        if (!nickname) {
+            nicknameFeedback.textContent = "닉네임을 입력해 주세요.";
+            nicknameFeedback.className = "form-text small text-danger";
+            return;
+        }
+
+        fetch(`{{ url_for('auth.check_nickname') }}?nickname=${encodeURIComponent(nickname)}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.available) {
+                    nicknameFeedback.textContent = "✓ 사용 가능한 닉네임입니다.";
+                    nicknameFeedback.className = "form-text small text-success fw-semibold";
+                } else {
+                    nicknameFeedback.textContent = "✗ 이미 사용 중인 닉네임입니다.";
+                    nicknameFeedback.className = "form-text small text-danger fw-semibold";
+                }
+            })
+            .catch(() => {
+                nicknameFeedback.textContent = "닉네임 확인 중 오류가 발생했습니다.";
+                nicknameFeedback.className = "form-text small text-danger";
+            });
+    });
 });
 </script>
 {% endblock %}

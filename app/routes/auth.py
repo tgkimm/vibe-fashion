@@ -110,6 +110,8 @@ def get_error_message(code: str) -> str:
         "auth_error": "인증 서비스 연결에 실패했습니다. 잠시 후 다시 시도해 주세요.",
         "rate_limit": "이메일 발송 한도를 초과했습니다. 잠시 후(또는 1시간 후) 다시 시도해 주세요.",
         "user_already_exists": "이미 등록된 이메일 주소입니다. 로그인하거나 비밀번호 찾기를 이용해 주세요.",
+        "nickname_exists": "이미 다른 회원이 사용 중인 닉네임입니다. 다른 닉네임을 입력해 주세요.",
+        "nickname_too_short": "닉네임은 2자 이상이어야 합니다.",
         "smtp_error": "SMTP 메일 서버 연결에 실패했습니다. Supabase의 SMTP 설정을 확인해 주세요.",
         "login_required": "로그인이 필요한 서비스입니다.",
         "delete_failed": "회원 탈퇴 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
@@ -126,6 +128,8 @@ def get_success_message(code: str) -> str:
         "confirmed": "이메일 인증이 성공적으로 완료되었습니다.",
         "reset_sent": "비밀번호 재설정 링크(및 인증코드)가 이메일로 발송되었습니다. 메일함을 확인해 주세요.",
         "password_changed": "비밀번호가 성공적으로 변경되었습니다. 새 비밀번호로 로그인해 주세요.",
+        "nickname_updated": "닉네임이 성공적으로 변경되었습니다.",
+        "email_update_sent": "새 이메일 주소로 인증 메일이 발송되었습니다. 메일함의 링크를 클릭하여 인증을 완료해 주세요.",
         "logged_out": "정상적으로 로그아웃되었습니다.",
         "account_deleted": "회원 탈퇴가 완료되었습니다. 그동안 이용해 주셔서 감사합니다.",
     }
@@ -281,6 +285,15 @@ def signup():
         supabase = get_supabase_client()
         if not supabase:
             return redirect(url_for("auth.signup", error="auth_error", email=email, name=name))
+
+        # 5. 닉네임 중복 검증
+        if name:
+            try:
+                existing = supabase.table("profiles").select("id").eq("name", name).execute()
+                if existing.data and len(existing.data) > 0:
+                    return redirect(url_for("auth.signup", error="nickname_exists", email=email, name=name))
+            except Exception as e:
+                logger.warning(f"[회원가입 닉네임 중복확인 경고] {e}")
 
         site_url = get_site_url()
         email_redirect_to = f"{site_url}/auth/confirm"
@@ -646,6 +659,36 @@ def reset_password():
     )
 
 
+@auth_bp.route("/check-nickname", methods=["GET"])
+def check_nickname():
+    """
+    닉네임 중복 확인 API (JSON)
+    - GET /auth/check-nickname?nickname=xxx
+    """
+    nickname = request.args.get("nickname", "").strip()
+    if not nickname or len(nickname) < 2:
+        return jsonify({"available": False, "message": "닉네임은 2자 이상 입력해 주세요."})
+
+    supabase = get_supabase_client()
+    if not supabase:
+        return jsonify({"available": False, "message": "인증 서버 연결 실패"}), 500
+
+    try:
+        current_user_id = session.get("user", {}).get("id")
+        query = supabase.table("profiles").select("id").eq("name", nickname)
+        res = query.execute()
+
+        # 본인의 현재 닉네임과 동일한 경우는 사용 가능 처리
+        if res.data:
+            if current_user_id and len(res.data) == 1 and res.data[0].get("id") == current_user_id:
+                return jsonify({"available": True, "message": "현재 사용 중인 본인의 닉네임입니다."})
+            return jsonify({"available": False, "message": "이미 사용 중인 닉네임입니다."})
+        return jsonify({"available": True, "message": "사용 가능한 닉네임입니다."})
+    except Exception as e:
+        logger.error(f"[닉네임 중복 확인 오류] {e}", exc_info=True)
+        return jsonify({"available": False, "message": "확인 중 오류가 발생했습니다."}), 500
+
+
 @auth_bp.route("/mypage")
 @login_required
 def mypage():
@@ -654,7 +697,124 @@ def mypage():
     - login_required 데코레이터 적용
     - 회원 정보 표시
     """
-    return render_template("mypage.html", user=session.get("user"))
+    error_code = request.args.get("error", "")
+    error_msg = get_error_message(error_code) if error_code else None
+
+    msg_code = request.args.get("msg") or request.args.get("success") or ""
+    success_msg = get_success_message(msg_code) if msg_code else None
+
+    return render_template(
+        "mypage.html",
+        user=session.get("user"),
+        error_msg=error_msg,
+        success_msg=success_msg
+    )
+
+
+@auth_bp.route("/update-profile", methods=["POST"])
+@login_required
+def update_profile():
+    """
+    개인정보 수정:
+    - 아이디(UUID)는 변경 불가
+    - 닉네임 변경 시: 다른 회원과 중복 체크 후 profiles 및 auth.users 메타데이터 수정
+    - 이메일 변경 시: Supabase auth.update_user(email=new_email)를 통해 새 이메일로 인증 메일 발송 및 재인증 요구
+    """
+    user_info = session.get("user")
+    if not user_info or not user_info.get("id"):
+        return redirect(url_for("auth.login", error="login_required"))
+
+    user_id = user_info["id"]
+    action = request.form.get("action", "")
+    supabase = get_supabase_client()
+    admin_client = get_supabase_admin_client()
+
+    if not supabase:
+        return redirect(url_for("auth.mypage", error="auth_error"))
+
+    # 1. 닉네임 변경 처리
+    if action == "update_nickname":
+        new_nickname = request.form.get("nickname", "").strip()
+        if not new_nickname or len(new_nickname) < 2:
+            return redirect(url_for("auth.mypage", error="nickname_too_short"))
+
+        # 중복 닉네임 체크 (다른 회원과 중복 여부)
+        try:
+            check_res = supabase.table("profiles").select("id").eq("name", new_nickname).execute()
+            if check_res.data:
+                # 본인의 기존 닉네임이 아닌 다른 회원이 이미 쓰고 있는 경우
+                other_users = [u for u in check_res.data if u.get("id") != user_id]
+                if other_users:
+                    return redirect(url_for("auth.mypage", error="nickname_exists"))
+        except Exception as e:
+            logger.warning(f"[닉네임 중복 확인 예외] {e}")
+
+        # profiles 테이블 업데이트
+        try:
+            if admin_client:
+                admin_client.table("profiles").update({"name": new_nickname}).eq("id", user_id).execute()
+            else:
+                supabase.table("profiles").update({"name": new_nickname}).eq("id", user_id).execute()
+        except Exception as e:
+            logger.error(f"[profiles 닉네임 변경 실패] {e}", exc_info=True)
+
+        # auth.users 메타데이터 업데이트
+        if admin_client:
+            try:
+                admin_client.auth.admin.update_user_by_id(
+                    user_id,
+                    {"user_metadata": {"name": new_nickname, "full_name": new_nickname}}
+                )
+            except Exception as e:
+                logger.warning(f"[auth.users 메타데이터 닉네임 변경 실패] {e}")
+
+        # 세션 정보 갱신
+        session["user"]["name"] = new_nickname
+        session.modified = True
+        return redirect(url_for("auth.mypage", msg="nickname_updated"))
+
+    # 2. 이메일 변경 처리 (새 이메일로 인증 메일 발송)
+    elif action == "update_email":
+        new_email = request.form.get("email", "").strip()
+        if not new_email or "@" not in new_email or "." not in new_email:
+            return redirect(url_for("auth.mypage", error="invalid_email"))
+
+        if new_email.lower() == user_info.get("email", "").lower():
+            flash("현재 사용 중인 이메일과 동일합니다.", "info")
+            return redirect(url_for("auth.mypage"))
+
+        site_url = get_site_url()
+        email_redirect_to = f"{site_url}/auth/confirm"
+        access_token = session.get("access_token")
+
+        try:
+            # access_token이 있으면 일반 클라이언트로 이메일 변경 요청 (Supabase가 변경 확인 이메일 자동 발송)
+            if access_token:
+                supabase.auth._request(
+                    "PUT",
+                    "user",
+                    jwt=access_token,
+                    body={"email": new_email},
+                    options={"email_redirect_to": email_redirect_to}
+                )
+            elif admin_client:
+                # access_token이 없는 경우 admin_client로 변경 요청
+                admin_client.auth.admin.update_user_by_id(
+                    user_id,
+                    {"email": new_email}
+                )
+                # profiles 테이블도 동기화
+                admin_client.table("profiles").update({"email": new_email}).eq("id", user_id).execute()
+
+            return redirect(url_for("auth.mypage", msg="email_update_sent"))
+        except Exception as e:
+            logger.error(f"[이메일 변경 요청 실패] {e}", exc_info=True)
+            err_str = str(e).lower()
+            if "already registered" in err_str:
+                return redirect(url_for("auth.mypage", error="user_already_exists"))
+            return redirect(url_for("auth.mypage", error="auth_error"))
+
+    return redirect(url_for("auth.mypage"))
 
 
 @auth_bp.route("/delete-account", methods=["POST"])
