@@ -15,21 +15,30 @@ auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 def get_site_url() -> str:
     """
     사이트 기본 URL을 결정합니다.
-    1. 환경 변수 SITE_URL이 명시적으로 설정되어 있으면 우선 사용
-    2. 그렇지 않고 현재 Flask 요청(request) 컨텍스트가 있으면 실제 유입된 host_url (예: Azure 배포 주소) 사용
-    3. 최후 fallback: os.getenv("SITE_URL", "http://localhost:5000")
+    1. 환경 변수 SITE_URL이 설정되어 있으면 최우선 사용
+    2. 현재 Flask 요청(request)이 있으면 host 및 X-Forwarded 헤더 기반으로 정확한 URL 산출
+    3. 최후 fallback: Azure 기본 배포 URL 또는 http://localhost:5000
     """
     configured_url = os.getenv("SITE_URL")
     if configured_url and configured_url.strip():
         return configured_url.strip().rstrip("/")
 
     try:
-        if request and request.host_url:
-            return request.host_url.rstrip("/")
+        if request:
+            # Azure App Service 환경 감지
+            proto = request.headers.get("X-Forwarded-Proto") or request.scheme
+            host = request.headers.get("X-Forwarded-Host") or request.host
+            if host:
+                return f"{proto}://{host}".rstrip("/")
     except Exception:
         pass
 
-    return os.getenv("SITE_URL", "http://localhost:5000").rstrip("/")
+    # Azure 호스트 환경변수(WEBSITE_HOSTNAME)가 있는 경우 자동 생성
+    website_hostname = os.getenv("WEBSITE_HOSTNAME")
+    if website_hostname:
+        return f"https://{website_hostname}".rstrip("/")
+
+    return "https://vibe-fashion-002-ghcuezf9b7c4g3fs.koreacentral-01.azurewebsites.net"
 
 
 def get_supabase_client() -> Client | None:

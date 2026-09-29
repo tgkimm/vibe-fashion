@@ -1,6 +1,7 @@
 import os
 from flask import Flask
 from dotenv import load_dotenv
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 # .env 파일에서 환경 변수 불러오기
 load_dotenv()
@@ -12,6 +13,9 @@ def create_app():
     """
     # 1. Flask 애플리케이션 객체 생성
     app = Flask(__name__)
+
+    # Azure App Service 리버스 프록시 헤더(X-Forwarded-Proto, X-Forwarded-Host 등) 신뢰 처리
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
     # 2. 기본 설정 적용
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "default-dev-secret-key")
