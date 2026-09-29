@@ -232,15 +232,19 @@ def kakao_login():
     """
     카카오 OAuth 로그인 시작:
     - Supabase signInWithOAuth를 통해 카카오 인증 URL 생성 후 리다이렉트
-    - 인증 완료 후 콜백 주소: {SITE_URL}/auth/confirm
+    - 인증 완료 후 콜백 주소: KAKAO_REDIRECT_URI 환경변수가 있으면 우선 사용, 없으면 {SITE_URL}/auth/confirm
     - PKCE code_verifier를 Flask 세션에 저장하여 콜백 시 검증할 수 있도록 지원
     """
     supabase = get_supabase_client()
     if not supabase:
         return redirect(url_for("auth.login", error="auth_error"))
 
-    site_url = get_site_url()
-    redirect_to = f"{site_url}/auth/confirm"
+    custom_redirect = os.getenv("KAKAO_REDIRECT_URI")
+    if custom_redirect and custom_redirect.strip():
+        redirect_to = custom_redirect.strip()
+    else:
+        site_url = get_site_url()
+        redirect_to = f"{site_url}/auth/confirm"
 
     try:
         res = supabase.auth.sign_in_with_oauth({
