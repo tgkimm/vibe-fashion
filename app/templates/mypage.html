@@ -80,14 +80,14 @@
                                 </form>
 
                                 <!-- 2. 닉네임 수정 폼 -->
-                                <form method="POST" action="{{ url_for('auth.update_profile') }}" class="mb-4 pb-3 border-bottom">
+                                <form method="POST" action="{{ url_for('auth.update_profile') }}" class="mb-4 pb-3 border-bottom" id="formUpdateNickname">
                                     <input type="hidden" name="action" value="update_nickname">
                                     <div class="mb-2">
                                         <label for="editNickname" class="form-label fw-semibold small">닉네임 변경</label>
                                         <div class="input-group">
-                                            <input type="text" class="form-control" id="editNickname" name="nickname" value="{{ user.name or '' }}" placeholder="새 닉네임 입력" required>
+                                            <input type="text" class="form-control" id="editNickname" name="nickname" value="{{ user.name or '' }}" data-original-nickname="{{ user.name or '' }}" placeholder="새 닉네임 입력" required>
                                             <button class="btn btn-outline-secondary" type="button" id="btnCheckMypageNickname">중복 확인</button>
-                                            <button type="submit" class="btn btn-primary px-3">닉네임 변경</button>
+                                            <button type="submit" class="btn btn-primary px-3" id="btnSubmitNickname">닉네임 변경</button>
                                         </div>
                                         <div id="mypageNicknameFeedback" class="form-text small">다른 회원과 중복되지 않는 닉네임을 설정해 주세요.</div>
                                     </div>
@@ -195,13 +195,60 @@ document.addEventListener("DOMContentLoaded", () => {
     const editNickname = document.getElementById("editNickname");
     const btnCheck = document.getElementById("btnCheckMypageNickname");
     const feedback = document.getElementById("mypageNicknameFeedback");
+    const formUpdateNickname = document.getElementById("formUpdateNickname");
+    const btnSubmitNickname = document.getElementById("btnSubmitNickname");
+
+    const originalNickname = editNickname ? editNickname.getAttribute("data-original-nickname") : "";
+    let isNicknameChecked = false;
+    let lastCheckedNickname = "";
+
+    function updateSubmitButtonState() {
+        if (!editNickname) return;
+        const currentVal = editNickname.value.trim();
+        // 기존 닉네임과 동일하거나 중복확인을 통과한 경우에만 제출 가능
+        if (currentVal && (currentVal === originalNickname || (isNicknameChecked && currentVal === lastCheckedNickname))) {
+            btnSubmitNickname.disabled = false;
+        } else {
+            btnSubmitNickname.disabled = true;
+        }
+    }
+
+    if (editNickname) {
+        updateSubmitButtonState();
+
+        editNickname.addEventListener("input", () => {
+            const currentVal = editNickname.value.trim();
+            if (currentVal !== lastCheckedNickname) {
+                isNicknameChecked = false;
+                if (currentVal === originalNickname) {
+                    feedback.textContent = "현재 사용 중인 본인의 닉네임입니다.";
+                    feedback.className = "form-text small text-muted";
+                } else {
+                    feedback.textContent = "닉네임이 변경되었습니다. 중복 확인을 진행해 주세요.";
+                    feedback.className = "form-text small text-warning fw-semibold";
+                }
+            }
+            updateSubmitButtonState();
+        });
+    }
 
     if (btnCheck && editNickname) {
         btnCheck.addEventListener("click", () => {
             const nickname = editNickname.value.trim();
-            if (!nickname) {
-                feedback.textContent = "닉네임을 입력해 주세요.";
+            if (!nickname || nickname.length < 2) {
+                feedback.textContent = "닉네임은 2자 이상 입력해 주세요.";
                 feedback.className = "form-text small text-danger";
+                isNicknameChecked = false;
+                updateSubmitButtonState();
+                return;
+            }
+
+            if (nickname === originalNickname) {
+                feedback.textContent = "현재 사용 중인 본인의 닉네임입니다.";
+                feedback.className = "form-text small text-success fw-semibold";
+                isNicknameChecked = true;
+                lastCheckedNickname = nickname;
+                updateSubmitButtonState();
                 return;
             }
 
@@ -209,17 +256,36 @@ document.addEventListener("DOMContentLoaded", () => {
                 .then(res => res.json())
                 .then(data => {
                     if (data.available) {
-                        feedback.textContent = "✓ 사용 가능한 닉네임입니다.";
+                        feedback.textContent = "✓ 사용 가능한 닉네임입니다. [닉네임 변경] 버튼을 눌러 저장해 주세요.";
                         feedback.className = "form-text small text-success fw-semibold";
+                        isNicknameChecked = true;
+                        lastCheckedNickname = nickname;
                     } else {
-                        feedback.textContent = "✗ 이미 사용 중인 닉네임입니다.";
+                        feedback.textContent = "✗ 이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해 주세요.";
                         feedback.className = "form-text small text-danger fw-semibold";
+                        isNicknameChecked = false;
+                        lastCheckedNickname = "";
                     }
+                    updateSubmitButtonState();
                 })
                 .catch(() => {
                     feedback.textContent = "닉네임 확인 중 오류가 발생했습니다.";
                     feedback.className = "form-text small text-danger";
+                    isNicknameChecked = false;
+                    updateSubmitButtonState();
                 });
+        });
+    }
+
+    if (formUpdateNickname) {
+        formUpdateNickname.addEventListener("submit", (e) => {
+            const currentVal = editNickname.value.trim();
+            if (currentVal !== originalNickname && (!isNicknameChecked || currentVal !== lastCheckedNickname)) {
+                e.preventDefault();
+                feedback.textContent = "닉네임 중복 확인을 먼저 완료해 주세요.";
+                feedback.className = "form-text small text-danger fw-semibold";
+                editNickname.focus();
+            }
         });
     }
 
