@@ -55,6 +55,26 @@ def login_required(view):
     return wrapped_view
 
 
+def validate_password_complexity(password: str) -> tuple[bool, str | None]:
+    """
+    비밀번호 복잡도 검증:
+    - 영문 대문자 포함
+    - 특수 문자 포함
+    - 8자 이상
+    """
+    if not password:
+        return False, "missing_fields"
+    if len(password) < 8:
+        return False, "password_too_short"
+    if not any(c.isupper() for c in password):
+        return False, "password_need_uppercase"
+    # 특수문자 검증 (!@#$%^&*(),.?":{}|<>[\]/\-_+=~`';)
+    special_chars = set("!@#$%^&*(),.?\":{}|<>[]/\\-_+=~`';")
+    if not any(c in special_chars for c in password):
+        return False, "password_need_special"
+    return True, None
+
+
 def get_error_message(code: str) -> str:
     """
     URL error 파라미터 코드를 한국어 에러 메시지로 변환합니다.
@@ -62,9 +82,12 @@ def get_error_message(code: str) -> str:
     messages = {
         "email_not_confirmed": "이메일 인증이 완료되지 않았습니다. 메일함의 인증 링크를 클릭하여 인증을 완료해 주세요.",
         "invalid_credentials": "이메일 또는 비밀번호가 일치하지 않습니다.",
+        "current_password_incorrect": "현재 비밀번호가 일치하지 않습니다.",
         "missing_fields": "필수 입력 항목을 모두 작성해 주세요.",
         "invalid_email": "올바른 이메일 형식을 입력해 주세요.",
-        "password_too_short": "비밀번호는 최소 6자 이상이어야 합니다.",
+        "password_too_short": "비밀번호는 최소 8자 이상이어야 합니다.",
+        "password_need_uppercase": "비밀번호에 최소 1개 이상의 영문 대문자가 포함되어야 합니다.",
+        "password_need_special": "비밀번호에 최소 1개 이상의 특수문자(!@#$%^&* 등)가 포함되어야 합니다.",
         "password_mismatch": "비밀번호 확인이 일치하지 않습니다.",
         "invalid_token": "인증 토큰이 유효하지 않거나 만료되었습니다. 다시 시도해 주세요.",
         "token_required": "인증 토큰 또는 링크 정보가 누락되었습니다.",
@@ -92,6 +115,7 @@ def get_success_message(code: str) -> str:
         "password_changed": "비밀번호가 성공적으로 변경되었습니다. 새 비밀번호로 로그인해 주세요.",
         "nickname_updated": "닉네임이 성공적으로 변경되었습니다.",
         "email_update_sent": "새 이메일 주소로 인증 메일이 발송되었습니다. 메일함의 링크를 클릭하여 인증을 완료해 주세요.",
+        "password_updated": "비밀번호가 성공적으로 변경되었습니다.",
         "logged_out": "정상적으로 로그아웃되었습니다.",
         "account_deleted": "회원 탈퇴가 완료되었습니다. 그동안 이용해 주셔서 감사합니다.",
     }
@@ -260,9 +284,10 @@ def signup():
         if "@" not in email or "." not in email:
             return redirect(url_for("auth.signup", error="invalid_email", email=email, name=name))
 
-        # 3. 비밀번호 길이 검증
-        if len(password) < 6:
-            return redirect(url_for("auth.signup", error="password_too_short", email=email, name=name))
+        # 3. 비밀번호 복잡도 검증 (영문 대문자 포함 8자 이상, 특수문자 포함)
+        is_valid_pw, pw_err_code = validate_password_complexity(password)
+        if not is_valid_pw:
+            return redirect(url_for("auth.signup", error=pw_err_code, email=email, name=name))
 
         # 4. 비밀번호 일치 검증
         if password_confirm and password != password_confirm:
@@ -555,8 +580,10 @@ def reset_password():
         if not password:
             return redirect(url_for("auth.reset_password", error="missing_fields", email=email))
 
-        if len(password) < 6:
-            return redirect(url_for("auth.reset_password", error="password_too_short", email=email))
+        # 비밀번호 복잡도 검증
+        is_valid_pw, pw_err_code = validate_password_complexity(password)
+        if not is_valid_pw:
+            return redirect(url_for("auth.reset_password", error=pw_err_code, email=email))
 
         if password != password_confirm:
             return redirect(url_for("auth.reset_password", error="password_mismatch", email=email))
@@ -789,6 +816,71 @@ def update_profile():
             if "already registered" in err_str:
                 return redirect(url_for("auth.mypage", error="user_already_exists"))
             return redirect(url_for("auth.mypage", error="auth_error"))
+
+    # 3. 비밀번호 변경 처리 (현재 비밀번호 확인 + 새 비밀번호 복잡도/일치 검증)
+    elif action == "update_password":
+        current_password = request.form.get("current_password", "").strip()
+        new_password = request.form.get("new_password", "").strip()
+        new_password_confirm = request.form.get("new_password_confirm", "").strip()
+
+        if not current_password or not new_password:
+            return redirect(url_for("auth.mypage", error="missing_fields"))
+
+        # 비밀번호 확인 일치 여부
+        if new_password != new_password_confirm:
+            return redirect(url_for("auth.mypage", error="password_mismatch"))
+
+        # 새 비밀번호 복잡도 검증 (대문자, 특수문자, 8자 이상)
+        is_valid_pw, pw_err_code = validate_password_complexity(new_password)
+        if not is_valid_pw:
+            return redirect(url_for("auth.mypage", error=pw_err_code))
+
+        # 현재 비밀번호가 맞는지 확인 (기존 이메일 + 현재 비밀번호로 재인증 시도)
+        user_email = user_info.get("email")
+        if not user_email:
+            return redirect(url_for("auth.mypage", error="auth_error"))
+
+        try:
+            verify_res = supabase.auth.sign_in_with_password({
+                "email": user_email,
+                "password": current_password
+            })
+            if not verify_res or not verify_res.user:
+                return redirect(url_for("auth.mypage", error="current_password_incorrect"))
+        except Exception as e:
+            logger.warning(f"[현재 비밀번호 확인 실패] {e}")
+            return redirect(url_for("auth.mypage", error="current_password_incorrect"))
+
+        # 비밀번호 변경 적용
+        access_token = getattr(verify_res.session, "access_token", None) or session.get("access_token")
+        updated = False
+
+        if access_token:
+            try:
+                supabase.auth._request(
+                    "PUT",
+                    "user",
+                    jwt=access_token,
+                    body={"password": new_password}
+                )
+                updated = True
+            except Exception as e:
+                logger.error(f"[사용자 토큰 비밀번호 변경 실패] {e}", exc_info=True)
+
+        if not updated and admin_client:
+            try:
+                admin_client.auth.admin.update_user_by_id(
+                    user_id,
+                    {"password": new_password}
+                )
+                updated = True
+            except Exception as e:
+                logger.error(f"[Admin 비밀번호 변경 실패] {e}", exc_info=True)
+
+        if updated:
+            return redirect(url_for("auth.mypage", msg="password_updated"))
+        else:
+            return redirect(url_for("auth.mypage", error="reset_failed"))
 
     return redirect(url_for("auth.mypage"))
 

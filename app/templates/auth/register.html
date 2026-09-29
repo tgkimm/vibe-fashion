@@ -49,12 +49,14 @@
                         <label for="password" class="form-label fw-semibold">비밀번호 <span class="text-danger">*</span></label>
                         <div class="input-group">
                             <span class="input-group-text bg-light border-end-0"><i class="bi bi-lock text-muted"></i></span>
-                            <input type="password" class="form-control border-start-0 ps-0" id="password" name="password" placeholder="최소 6자 이상" minlength="6" required>
+                            <input type="password" class="form-control border-start-0 ps-0" id="password" name="password" placeholder="영문 대문자, 특수문자 포함 8자 이상" minlength="8" required>
                         </div>
                         <div class="mt-2 p-2 bg-light rounded-2 border">
-                            <div class="small fw-semibold text-muted mb-1">비밀번호 규칙:</div>
+                            <div class="small fw-semibold text-muted mb-1">비밀번호 충족 조건:</div>
                             <ul class="list-unstyled mb-0 small">
-                                <li id="rule-len" class="text-danger"><i class="bi bi-x-circle me-1"></i>최소 6자 이상</li>
+                                <li id="rule-len" class="text-danger"><i class="bi bi-x-circle me-1"></i>최소 8자 이상</li>
+                                <li id="rule-upper" class="text-danger"><i class="bi bi-x-circle me-1"></i>영문 대문자 1개 이상 포함</li>
+                                <li id="rule-special" class="text-danger"><i class="bi bi-x-circle me-1"></i>특수문자(!@#$%^&* 등) 1개 이상 포함</li>
                             </ul>
                         </div>
                     </div>
@@ -64,7 +66,7 @@
                         <label for="password_confirm" class="form-label fw-semibold">비밀번호 확인 <span class="text-danger">*</span></label>
                         <div class="input-group">
                             <span class="input-group-text bg-light border-end-0"><i class="bi bi-shield-check text-muted"></i></span>
-                            <input type="password" class="form-control border-start-0 ps-0" id="password_confirm" name="password_confirm" placeholder="비밀번호 재입력" minlength="6" required>
+                            <input type="password" class="form-control border-start-0 ps-0" id="password_confirm" name="password_confirm" placeholder="비밀번호 재입력" minlength="8" required>
                         </div>
                         <div id="pwMatchFeedback" class="form-text mt-1 small"></div>
                     </div>
@@ -107,16 +109,41 @@ document.addEventListener("DOMContentLoaded", () => {
     const confirmInput = document.getElementById("password_confirm");
     const pwMatchFeedback = document.getElementById("pwMatchFeedback");
     const ruleLen = document.getElementById("rule-len");
+    const ruleUpper = document.getElementById("rule-upper");
+    const ruleSpecial = document.getElementById("rule-special");
+
+    const specialRegex = /[!@#$%^&*(),.?":{}|<>\[\]/\\-_+=~`';]/;
 
     function updatePasswordRules() {
         const pw = passwordInput.value;
-        if (pw.length >= 6) {
+
+        // 8자 이상
+        if (pw.length >= 8) {
             ruleLen.className = "text-success";
-            ruleLen.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>최소 6자 이상';
+            ruleLen.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>최소 8자 이상';
         } else {
             ruleLen.className = "text-danger";
-            ruleLen.innerHTML = '<i class="bi bi-x-circle me-1"></i>최소 6자 이상';
+            ruleLen.innerHTML = '<i class="bi bi-x-circle me-1"></i>최소 8자 이상';
         }
+
+        // 대문자 포함
+        if (/[A-Z]/.test(pw)) {
+            ruleUpper.className = "text-success";
+            ruleUpper.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>영문 대문자 1개 이상 포함';
+        } else {
+            ruleUpper.className = "text-danger";
+            ruleUpper.innerHTML = '<i class="bi bi-x-circle me-1"></i>영문 대문자 1개 이상 포함';
+        }
+
+        // 특수문자 포함
+        if (specialRegex.test(pw)) {
+            ruleSpecial.className = "text-success";
+            ruleSpecial.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>특수문자(!@#$%^&* 등) 1개 이상 포함';
+        } else {
+            ruleSpecial.className = "text-danger";
+            ruleSpecial.innerHTML = '<i class="bi bi-x-circle me-1"></i>특수문자(!@#$%^&* 등) 1개 이상 포함';
+        }
+
         checkMatch();
     }
 

@@ -77,7 +77,7 @@
                                 </form>
 
                                 <!-- 2. 이메일 수정 폼 -->
-                                <form method="POST" action="{{ url_for('auth.update_profile') }}">
+                                <form method="POST" action="{{ url_for('auth.update_profile') }}" class="mb-4 pb-3 border-bottom">
                                     <input type="hidden" name="action" value="update_email">
                                     <div class="mb-2">
                                         <label for="editEmail" class="form-label fw-semibold small">이메일 주소 변경</label>
@@ -89,6 +89,38 @@
                                             <i class="bi bi-info-circle me-1"></i>이메일 변경 시 입력하신 새 이메일 주소로 인증 메일이 발송되며, 메일함에서 인증을 완료해야 변경이 완료됩니다.
                                         </div>
                                     </div>
+                                </form>
+
+                                <!-- 3. 비밀번호 변경 폼 -->
+                                <form method="POST" action="{{ url_for('auth.update_profile') }}">
+                                    <input type="hidden" name="action" value="update_password">
+                                    <div class="mb-3">
+                                        <label for="currentPassword" class="form-label fw-semibold small">현재 비밀번호 <span class="text-danger">*</span></label>
+                                        <input type="password" class="form-control" id="currentPassword" name="current_password" placeholder="현재 사용 중인 비밀번호" required>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="newPassword" class="form-label fw-semibold small">새 비밀번호 <span class="text-danger">*</span></label>
+                                        <input type="password" class="form-control" id="newPassword" name="new_password" placeholder="영문 대문자, 특수문자 포함 8자 이상" minlength="8" required>
+                                        <div class="mt-2 p-2 bg-white rounded-2 border">
+                                            <div class="small fw-semibold text-muted mb-1">비밀번호 충족 조건:</div>
+                                            <ul class="list-unstyled mb-0 small">
+                                                <li id="mypage-rule-len" class="text-danger"><i class="bi bi-x-circle me-1"></i>최소 8자 이상</li>
+                                                <li id="mypage-rule-upper" class="text-danger"><i class="bi bi-x-circle me-1"></i>영문 대문자 1개 이상 포함</li>
+                                                <li id="mypage-rule-special" class="text-danger"><i class="bi bi-x-circle me-1"></i>특수문자(!@#$%^&* 등) 1개 이상 포함</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="newPasswordConfirm" class="form-label fw-semibold small">새 비밀번호 확인 <span class="text-danger">*</span></label>
+                                        <input type="password" class="form-control" id="newPasswordConfirm" name="new_password_confirm" placeholder="새 비밀번호 재입력" minlength="8" required>
+                                        <div id="mypagePwMatchFeedback" class="form-text mt-1 small"></div>
+                                    </div>
+
+                                    <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold rounded-3">
+                                        비밀번호 변경하기
+                                    </button>
                                 </form>
 
                             </div>
@@ -172,6 +204,69 @@ document.addEventListener("DOMContentLoaded", () => {
                     feedback.className = "form-text small text-danger";
                 });
         });
+    }
+
+    // 마이페이지 비밀번호 실시간 검증
+    const newPwInput = document.getElementById("newPassword");
+    const newPwConfirm = document.getElementById("newPasswordConfirm");
+    const mypagePwMatchFeedback = document.getElementById("mypagePwMatchFeedback");
+    const mypageRuleLen = document.getElementById("mypage-rule-len");
+    const mypageRuleUpper = document.getElementById("mypage-rule-upper");
+    const mypageRuleSpecial = document.getElementById("mypage-rule-special");
+    const specialRegex = /[!@#$%^&*(),.?":{}|<>\[\]/\\-_+=~`';]/;
+
+    if (newPwInput && newPwConfirm) {
+        function checkMypagePwRules() {
+            const val = newPwInput.value;
+
+            // 8자 이상
+            if (val.length >= 8) {
+                mypageRuleLen.className = "text-success";
+                mypageRuleLen.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>최소 8자 이상';
+            } else {
+                mypageRuleLen.className = "text-danger";
+                mypageRuleLen.innerHTML = '<i class="bi bi-x-circle me-1"></i>최소 8자 이상';
+            }
+
+            // 대문자 포함
+            if (/[A-Z]/.test(val)) {
+                mypageRuleUpper.className = "text-success";
+                mypageRuleUpper.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>영문 대문자 1개 이상 포함';
+            } else {
+                mypageRuleUpper.className = "text-danger";
+                mypageRuleUpper.innerHTML = '<i class="bi bi-x-circle me-1"></i>영문 대문자 1개 이상 포함';
+            }
+
+            // 특수문자 포함
+            if (specialRegex.test(val)) {
+                mypageRuleSpecial.className = "text-success";
+                mypageRuleSpecial.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>특수문자(!@#$%^&* 등) 1개 이상 포함';
+            } else {
+                mypageRuleSpecial.className = "text-danger";
+                mypageRuleSpecial.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>특수문자(!@#$%^&* 등) 1개 이상 포함';
+            }
+
+            checkMypagePwMatch();
+        }
+
+        function checkMypagePwMatch() {
+            const p1 = newPwInput.value;
+            const p2 = newPwConfirm.value;
+            if (!p2) {
+                mypagePwMatchFeedback.textContent = "";
+                return;
+            }
+            if (p1 === p2) {
+                mypagePwMatchFeedback.textContent = "✓ 새 비밀번호가 일치합니다.";
+                mypagePwMatchFeedback.className = "form-text mt-1 small text-success fw-semibold";
+            } else {
+                mypagePwMatchFeedback.textContent = "✗ 새 비밀번호가 일치하지 않습니다.";
+                mypagePwMatchFeedback.className = "form-text mt-1 small text-danger fw-semibold";
+            }
+        }
+
+        newPwInput.addEventListener("input", checkMypagePwRules);
+        newPwConfirm.addEventListener("input", checkMypagePwMatch);
     }
 });
 </script>
