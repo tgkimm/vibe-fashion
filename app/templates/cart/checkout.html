@@ -22,7 +22,7 @@
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label small fw-semibold">주문자 이름</label>
-                            <input type="text" class="form-control" value="{{ user.name or '' }}" readonly>
+                            <input type="text" class="form-control" value="{{ user.real_name or user.name or '' }}" readonly>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label small fw-semibold">이메일 주소</label>
@@ -36,7 +36,7 @@
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label for="receiver_name" class="form-label small fw-semibold">수령인</label>
-                            <input type="text" class="form-control" id="receiver_name" name="receiver_name" value="{{ user.name or '' }}" required>
+                            <input type="text" class="form-control" id="receiver_name" name="receiver_name" value="{{ user.real_name or user.name or '' }}" required>
                         </div>
                         <div class="col-md-6">
                             <label for="receiver_phone" class="form-label small fw-semibold">연락처</label>

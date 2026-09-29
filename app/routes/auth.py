@@ -6,7 +6,7 @@ import secrets
 import urllib.parse
 import urllib.request
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
-from app.utils import get_supabase_client, get_supabase_admin_client, extract_display_name
+from app.utils import get_supabase_client, get_supabase_admin_client, extract_display_name, extract_real_name
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
@@ -101,6 +101,7 @@ def get_error_message(code: str) -> str:
         "user_already_exists": "이미 등록된 이메일 주소입니다. 로그인하거나 비밀번호 찾기를 이용해 주세요.",
         "nickname_exists": "이미 다른 회원이 사용 중인 닉네임입니다. 다른 닉네임을 입력해 주세요.",
         "nickname_too_short": "닉네임은 2자 이상이어야 합니다.",
+        "name_required": "이름(실명)을 입력해 주세요.",
         "smtp_error": "SMTP 메일 서버 연결에 실패했습니다. Supabase의 SMTP 설정을 확인해 주세요.",
         "naver_not_configured": "네이버 로그인 설정(Client ID/Secret)이 완료되지 않았습니다.",
         "naver_auth_failed": "네이버 로그인 인증에 실패했습니다.",
@@ -119,6 +120,7 @@ def get_success_message(code: str) -> str:
         "confirmed": "이메일 인증이 성공적으로 완료되었습니다.",
         "reset_sent": "비밀번호 재설정 링크(및 인증코드)가 이메일로 발송되었습니다. 메일함을 확인해 주세요.",
         "password_changed": "비밀번호가 성공적으로 변경되었습니다. 새 비밀번호로 로그인해 주세요.",
+        "name_updated": "이름이 성공적으로 변경되었습니다.",
         "nickname_updated": "닉네임이 성공적으로 변경되었습니다.",
         "email_update_sent": "새 이메일 주소로 인증 메일이 발송되었습니다. 메일함의 링크를 클릭하여 인증을 완료해 주세요.",
         "password_updated": "비밀번호가 성공적으로 변경되었습니다.",
@@ -187,12 +189,26 @@ def login():
                     return redirect(url_for("auth.login", **redirect_params))
 
                 display_name = extract_display_name(user)
+                real_name = extract_real_name(user)
+
+                # profiles 테이블의 닉네임과 이름 조회 (동기화)
+                try:
+                    p_res = supabase.table("profiles").select("name, real_name").eq("id", str(user.id)).execute()
+                    if p_res.data and len(p_res.data) > 0:
+                        p_row = p_res.data[0]
+                        if p_row.get("name"):
+                            display_name = p_row.get("name")
+                        if p_row.get("real_name"):
+                            real_name = p_row.get("real_name")
+                except Exception as pe:
+                    logger.warning(f"[로그인 프로필 조회 경고] {pe}")
 
                 # Flask session 저장
                 session["user"] = {
                     "id": str(user.id),
                     "email": user.email,
                     "name": display_name,
+                    "real_name": real_name or display_name,
                 }
                 if auth_response.session and getattr(auth_response.session, "access_token", None):
                     session["access_token"] = auth_response.session.access_token
@@ -372,8 +388,12 @@ def naver_callback():
         naver_account = profile_json.get("response", {})
         naver_id = naver_account.get("id")
         email = naver_account.get("email") or f"naver_{naver_id[:10]}@naver.com"
-        nickname = naver_account.get("nickname") or naver_account.get("name") or email.split("@")[0]
+        naver_real_name = naver_account.get("name") or ""
+        naver_nickname = naver_account.get("nickname") or naver_real_name or email.split("@")[0]
         profile_image = naver_account.get("profile_image")
+
+        nickname = naver_nickname
+        real_name = naver_real_name or nickname
 
         # 3. Supabase 회원 연동 (Admin 클라이언트 활용)
         admin_client = get_supabase_admin_client()
@@ -387,17 +407,19 @@ def naver_callback():
 
             if target_user:
                 user_id = str(target_user.id)
-                # 기존 닉네임 가져오기
                 meta = getattr(target_user, "user_metadata", {}) or {}
-                nickname = meta.get("name") or nickname
+                nickname = meta.get("nickname") or meta.get("name") or nickname
+                real_name = meta.get("real_name") or meta.get("full_name") or real_name
             else:
-                # 신규 계정 생성
+                # 신규 계정 생성: 이름은 네이버 계정의 실명, 닉네임은 사용자가 나중에 변경 가능
                 new_user = admin_client.auth.admin.create_user({
                     "email": email,
                     "email_confirm": True,
                     "user_metadata": {
                         "name": nickname,
-                        "full_name": nickname,
+                        "nickname": nickname,
+                        "real_name": real_name,
+                        "full_name": real_name,
                         "picture": profile_image,
                         "avatar_url": profile_image,
                         "provider": "naver"
@@ -409,20 +431,27 @@ def naver_callback():
             # profiles 테이블 확인 및 동기화
             if user_id:
                 try:
-                    profile_check = admin_client.table("profiles").select("id, name").eq("id", user_id).execute()
+                    profile_check = admin_client.table("profiles").select("id, name, real_name").eq("id", user_id).execute()
                     if profile_check.data and len(profile_check.data) > 0:
-                        db_name = profile_check.data[0].get("name")
-                        if db_name:
-                            nickname = db_name
+                        db_row = profile_check.data[0]
+                        if db_row.get("name"):
+                            nickname = db_row.get("name")
+                        if db_row.get("real_name"):
+                            real_name = db_row.get("real_name")
                     else:
-                        admin_client.table("profiles").insert({
+                        profile_insert_data = {
                             "id": user_id,
                             "email": email,
                             "name": nickname,
                             "avatar_url": profile_image,
                             "role": "customer",
                             "grade": "BRONZE"
-                        }).execute()
+                        }
+                        try:
+                            # real_name 컬럼이 있을 경우 저장
+                            admin_client.table("profiles").insert({**profile_insert_data, "real_name": real_name}).execute()
+                        except Exception:
+                            admin_client.table("profiles").insert(profile_insert_data).execute()
                 except Exception as pe:
                     logger.warning(f"[네이버 프로필 테이블 동기화 경고] {pe}")
 
@@ -431,6 +460,7 @@ def naver_callback():
             "id": user_id or f"naver_{naver_id}",
             "email": email,
             "name": nickname,
+            "real_name": real_name,
         }
         session.permanent = True
         return redirect(url_for("auth.mypage"))
@@ -456,39 +486,45 @@ def signup():
 
     if request.method == "POST":
         email = request.form.get("email", "").strip()
-        name = request.form.get("name", "").strip()
+        real_name = request.form.get("real_name", "").strip()
+        nickname = (request.form.get("nickname") or request.form.get("name") or "").strip()
         password = request.form.get("password", "").strip()
         password_confirm = request.form.get("password_confirm", "").strip()
 
         # 1. 필수값 체크
         if not email or not password:
-            return redirect(url_for("auth.signup", error="missing_fields", email=email, name=name))
+            return redirect(url_for("auth.signup", error="missing_fields", email=email, real_name=real_name, nickname=nickname))
+
+        if not real_name:
+            return redirect(url_for("auth.signup", error="name_required", email=email, real_name=real_name, nickname=nickname))
+
+        if not nickname or len(nickname) < 2:
+            return redirect(url_for("auth.signup", error="nickname_too_short", email=email, real_name=real_name, nickname=nickname))
 
         # 2. 이메일 형식 검증
         if "@" not in email or "." not in email:
-            return redirect(url_for("auth.signup", error="invalid_email", email=email, name=name))
+            return redirect(url_for("auth.signup", error="invalid_email", email=email, real_name=real_name, nickname=nickname))
 
         # 3. 비밀번호 복잡도 검증 (영문 대문자 포함 8자 이상, 특수문자 포함)
         is_valid_pw, pw_err_code = validate_password_complexity(password)
         if not is_valid_pw:
-            return redirect(url_for("auth.signup", error=pw_err_code, email=email, name=name))
+            return redirect(url_for("auth.signup", error=pw_err_code, email=email, real_name=real_name, nickname=nickname))
 
         # 4. 비밀번호 일치 검증
         if password_confirm and password != password_confirm:
-            return redirect(url_for("auth.signup", error="password_mismatch", email=email, name=name))
+            return redirect(url_for("auth.signup", error="password_mismatch", email=email, real_name=real_name, nickname=nickname))
 
         supabase = get_supabase_client()
         if not supabase:
-            return redirect(url_for("auth.signup", error="auth_error", email=email, name=name))
+            return redirect(url_for("auth.signup", error="auth_error", email=email, real_name=real_name, nickname=nickname))
 
         # 5. 닉네임 중복 검증
-        if name:
-            try:
-                existing = supabase.table("profiles").select("id").eq("name", name).execute()
-                if existing.data and len(existing.data) > 0:
-                    return redirect(url_for("auth.signup", error="nickname_exists", email=email, name=name))
-            except Exception as e:
-                logger.warning(f"[회원가입 닉네임 중복확인 경고] {e}")
+        try:
+            existing = supabase.table("profiles").select("id").eq("name", nickname).execute()
+            if existing.data and len(existing.data) > 0:
+                return redirect(url_for("auth.signup", error="nickname_exists", email=email, real_name=real_name, nickname=nickname))
+        except Exception as e:
+            logger.warning(f"[회원가입 닉네임 중복확인 경고] {e}")
 
         site_url = get_site_url()
         email_redirect_to = f"{site_url}/auth/confirm"
@@ -497,8 +533,10 @@ def signup():
             signup_options = {
                 "email_redirect_to": email_redirect_to,
                 "data": {
-                    "name": name or email.split("@")[0],
-                    "full_name": name or email.split("@")[0],
+                    "name": nickname,
+                    "nickname": nickname,
+                    "real_name": real_name,
+                    "full_name": real_name,
                 }
             }
 
@@ -515,18 +553,19 @@ def signup():
             logger.error(f"[회원가입 오류] {e}", exc_info=True)
             err_str = str(e).lower()
             if "rate limit" in err_str or "over_email_send_rate_limit" in err_str:
-                return redirect(url_for("auth.signup", error="rate_limit", email=email, name=name))
+                return redirect(url_for("auth.signup", error="rate_limit", email=email, real_name=real_name, nickname=nickname))
             elif "user already registered" in err_str or "already registered" in err_str:
-                return redirect(url_for("auth.signup", error="user_already_exists", email=email, name=name))
+                return redirect(url_for("auth.signup", error="user_already_exists", email=email, real_name=real_name, nickname=nickname))
             elif "smtp" in err_str:
-                return redirect(url_for("auth.signup", error="smtp_error", email=email, name=name, detail=str(e)[:100]))
-            return redirect(url_for("auth.signup", error="auth_error", email=email, name=name, detail=str(e)[:100]))
+                return redirect(url_for("auth.signup", error="smtp_error", email=email, real_name=real_name, nickname=nickname, detail=str(e)[:100]))
+            return redirect(url_for("auth.signup", error="auth_error", email=email, real_name=real_name, nickname=nickname, detail=str(e)[:100]))
 
     custom_error = request.args.get("detail") if error_code == "auth_error" and request.args.get("detail") else error_msg
     return render_template(
         "auth/register.html",
         email=request.args.get("email", ""),
-        name=request.args.get("name", ""),
+        real_name=request.args.get("real_name", ""),
+        nickname=request.args.get("nickname", "") or request.args.get("name", ""),
         error_msg=custom_error
     )
 
@@ -606,12 +645,41 @@ def confirm():
         if auth_response and auth_response.user:
             user = auth_response.user
             display_name = extract_display_name(user)
+            real_name = extract_real_name(user)
+
+            # profiles 테이블 확인 및 동기화
+            try:
+                p_res = supabase.table("profiles").select("name, real_name").eq("id", str(user.id)).execute()
+                if p_res.data and len(p_res.data) > 0:
+                    p_row = p_res.data[0]
+                    if p_row.get("name"):
+                        display_name = p_row.get("name")
+                    if p_row.get("real_name"):
+                        real_name = p_row.get("real_name")
+                else:
+                    # 신규 생성 (소셜 또는 이메일 첫 확인 시)
+                    admin_client = get_supabase_admin_client()
+                    client_to_use = admin_client or supabase
+                    profile_payload = {
+                        "id": str(user.id),
+                        "email": user.email,
+                        "name": display_name,
+                        "role": "customer",
+                        "grade": "BRONZE"
+                    }
+                    try:
+                        client_to_use.table("profiles").insert({**profile_payload, "real_name": real_name}).execute()
+                    except Exception:
+                        client_to_use.table("profiles").insert(profile_payload).execute()
+            except Exception as pe:
+                logger.warning(f"[이메일/소셜 인증 후 profiles 동기화 경고] {pe}")
 
             # 성공 시 Flask session 저장
             session["user"] = {
                 "id": str(user.id),
                 "email": user.email,
                 "name": display_name,
+                "real_name": real_name or display_name,
             }
             if auth_response.session and getattr(auth_response.session, "access_token", None):
                 session["access_token"] = auth_response.session.access_token
@@ -652,11 +720,24 @@ def confirm_session():
         if user_response and user_response.user:
             user = user_response.user
             display_name = extract_display_name(user)
+            real_name = extract_real_name(user)
+
+            try:
+                p_res = supabase.table("profiles").select("name, real_name").eq("id", str(user.id)).execute()
+                if p_res.data and len(p_res.data) > 0:
+                    p_row = p_res.data[0]
+                    if p_row.get("name"):
+                        display_name = p_row.get("name")
+                    if p_row.get("real_name"):
+                        real_name = p_row.get("real_name")
+            except Exception as pe:
+                logger.warning(f"[해시 세션 profiles 조회 경고] {pe}")
 
             session["user"] = {
                 "id": str(user.id),
                 "email": user.email,
                 "name": display_name,
+                "real_name": real_name or display_name,
             }
             session["access_token"] = access_token
             if refresh_token:
@@ -752,6 +833,7 @@ def reset_password():
                     "id": str(auth_response.user.id),
                     "email": auth_response.user.email,
                     "name": extract_display_name(auth_response.user),
+                    "real_name": extract_real_name(auth_response.user),
                 }
                 if auth_response.session and getattr(auth_response.session, "access_token", None):
                     session["access_token"] = auth_response.session.access_token
@@ -787,6 +869,7 @@ def reset_password():
                         "id": str(auth_response.user.id),
                         "email": auth_response.user.email,
                         "name": extract_display_name(auth_response.user),
+                        "real_name": extract_real_name(auth_response.user),
                     }
                     if auth_response.session and getattr(auth_response.session, "access_token", None):
                         session["access_token"] = auth_response.session.access_token
@@ -892,6 +975,22 @@ def mypage():
     msg_code = request.args.get("msg") or request.args.get("success") or ""
     success_msg = get_success_message(msg_code) if msg_code else None
 
+    user_info = session.get("user")
+    supabase = get_supabase_client()
+    if user_info and supabase:
+        try:
+            p_res = supabase.table("profiles").select("name, real_name").eq("id", user_info["id"]).execute()
+            if p_res.data and len(p_res.data) > 0:
+                p_row = p_res.data[0]
+                if p_row.get("name"):
+                    user_info["name"] = p_row.get("name")
+                if p_row.get("real_name"):
+                    user_info["real_name"] = p_row.get("real_name")
+                session["user"] = user_info
+                session.modified = True
+        except Exception as pe:
+            logger.warning(f"[마이페이지 프로필 최신화 경고] {pe}")
+
     return render_template(
         "mypage.html",
         user=session.get("user"),
@@ -906,6 +1005,7 @@ def update_profile():
     """
     개인정보 수정:
     - 아이디(UUID)는 변경 불가
+    - 이름(실명) 변경 시: profiles 및 auth.users 메타데이터 수정
     - 닉네임 변경 시: 다른 회원과 중복 체크 후 profiles 및 auth.users 메타데이터 수정
     - 이메일 변경 시: Supabase auth.update_user(email=new_email)를 통해 새 이메일로 인증 메일 발송 및 재인증 요구
     """
@@ -921,8 +1021,38 @@ def update_profile():
     if not supabase:
         return redirect(url_for("auth.mypage", error="auth_error"))
 
-    # 1. 닉네임 변경 처리
-    if action == "update_nickname":
+    # 1. 이름(실명) 변경 처리
+    if action == "update_name":
+        new_name = request.form.get("name", "").strip()
+        if not new_name:
+            return redirect(url_for("auth.mypage", error="name_required"))
+
+        # profiles 테이블 업데이트
+        try:
+            client_to_use = admin_client or supabase
+            try:
+                client_to_use.table("profiles").update({"real_name": new_name}).eq("id", user_id).execute()
+            except Exception as pe:
+                logger.warning(f"[profiles real_name 컬럼 업데이트 시도 실패] {pe}")
+        except Exception as e:
+            logger.error(f"[profiles 이름 변경 실패] {e}", exc_info=True)
+
+        # auth.users 메타데이터 업데이트
+        if admin_client:
+            try:
+                admin_client.auth.admin.update_user_by_id(
+                    user_id,
+                    {"user_metadata": {"real_name": new_name, "full_name": new_name}}
+                )
+            except Exception as e:
+                logger.warning(f"[auth.users 메타데이터 이름 변경 실패] {e}")
+
+        session["user"]["real_name"] = new_name
+        session.modified = True
+        return redirect(url_for("auth.mypage", msg="name_updated"))
+
+    # 2. 닉네임 변경 처리
+    elif action == "update_nickname":
         new_nickname = request.form.get("nickname", "").strip()
         if not new_nickname or len(new_nickname) < 2:
             return redirect(url_for("auth.mypage", error="nickname_too_short"))
@@ -952,7 +1082,7 @@ def update_profile():
             try:
                 admin_client.auth.admin.update_user_by_id(
                     user_id,
-                    {"user_metadata": {"name": new_nickname, "full_name": new_nickname}}
+                    {"user_metadata": {"nickname": new_nickname, "name": new_nickname}}
                 )
             except Exception as e:
                 logger.warning(f"[auth.users 메타데이터 닉네임 변경 실패] {e}")

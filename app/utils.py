@@ -50,18 +50,43 @@ def get_supabase_admin_client() -> Client | None:
 
 def extract_display_name(user) -> str:
     """
-    Supabase user 객체에서 닉네임/이름을 우선순위에 따라 추출합니다:
-    1. user_metadata['name']
-    2. user_metadata['full_name']
-    3. 이메일 아이디 부분 (@ 앞)
-    4. 기본값 '회원'
+    Supabase user 객체에서 닉네임을 우선순위에 따라 추출합니다:
+    1. user_metadata['nickname']
+    2. user_metadata['name']
+    3. user_metadata['full_name']
+    4. 이메일 아이디 부분 (@ 앞)
+    5. 기본값 '회원'
     """
     if not user:
         return "회원"
     user_metadata = getattr(user, "user_metadata", {}) or {}
     email = getattr(user, "email", "") or ""
     return (
-        user_metadata.get("name")
+        user_metadata.get("nickname")
+        or user_metadata.get("name")
         or user_metadata.get("full_name")
         or (email.split("@")[0] if email else "회원")
     )
+
+
+def extract_real_name(user) -> str:
+    """
+    Supabase user 객체에서 실명(이름)을 우선순위에 따라 추출합니다:
+    1. user_metadata['real_name']
+    2. user_metadata['full_name']
+    3. user_metadata['user_name']
+    4. user_metadata['preferred_username']
+    5. user_metadata['name'] (소셜 로그인 시 제공된 이름)
+    6. 빈 문자열
+    """
+    if not user:
+        return ""
+    user_metadata = getattr(user, "user_metadata", {}) or {}
+    return (
+        user_metadata.get("real_name")
+        or user_metadata.get("full_name")
+        or user_metadata.get("user_name")
+        or user_metadata.get("preferred_username")
+        or user_metadata.get("name")
+        or ""
+    ).strip()

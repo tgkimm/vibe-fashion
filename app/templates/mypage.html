@@ -38,12 +38,16 @@
                         <span class="fw-semibold font-monospace small text-muted">{{ user.id }} <span class="badge bg-light text-secondary border ms-1">변경 불가</span></span>
                     </div>
                     <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-3">
-                        <span class="text-muted">이메일</span>
-                        <span class="fw-semibold">{{ user.email }}</span>
+                        <span class="text-muted">이름 (실명)</span>
+                        <span class="fw-semibold">{{ user.real_name or user.name or '-' }}</span>
                     </div>
                     <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-3">
                         <span class="text-muted">닉네임</span>
                         <span class="fw-semibold">{{ user.name or '-' }}</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-3">
+                        <span class="text-muted">이메일</span>
+                        <span class="fw-semibold">{{ user.email }}</span>
                     </div>
                     <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-3">
                         <span class="text-muted">계정 상태</span>
@@ -56,13 +60,26 @@
                     <div class="accordion-item border rounded-3 overflow-hidden">
                         <h2 class="accordion-header" id="headingProfile">
                             <button class="accordion-button collapsed fw-semibold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseProfile" aria-expanded="false" aria-controls="collapseProfile">
-                                <i class="bi bi-gear me-2 text-primary"></i>개인정보 수정 (닉네임 / 이메일 변경)
+                                <i class="bi bi-gear me-2 text-primary"></i>개인정보 수정 (이름 / 닉네임 / 이메일 / 비밀번호)
                             </button>
                         </h2>
                         <div id="collapseProfile" class="accordion-collapse collapse" aria-labelledby="headingProfile" data-bs-parent="#profileEditAccordion">
                             <div class="accordion-body bg-light bg-opacity-50">
                                 
-                                <!-- 1. 닉네임 수정 폼 -->
+                                <!-- 1. 이름(실명) 수정 폼 -->
+                                <form method="POST" action="{{ url_for('auth.update_profile') }}" class="mb-4 pb-3 border-bottom">
+                                    <input type="hidden" name="action" value="update_name">
+                                    <div class="mb-2">
+                                        <label for="editName" class="form-label fw-semibold small">이름 (실명) 변경</label>
+                                        <div class="input-group">
+                                            <input type="text" class="form-control" id="editName" name="name" value="{{ user.real_name or user.name or '' }}" placeholder="새 이름 입력" required>
+                                            <button type="submit" class="btn btn-primary px-3">이름 변경</button>
+                                        </div>
+                                        <div class="form-text small text-muted">주문서 및 배송 정보에 기본 적용되는 실명입니다.</div>
+                                    </div>
+                                </form>
+
+                                <!-- 2. 닉네임 수정 폼 -->
                                 <form method="POST" action="{{ url_for('auth.update_profile') }}" class="mb-4 pb-3 border-bottom">
                                     <input type="hidden" name="action" value="update_nickname">
                                     <div class="mb-2">
@@ -70,13 +87,13 @@
                                         <div class="input-group">
                                             <input type="text" class="form-control" id="editNickname" name="nickname" value="{{ user.name or '' }}" placeholder="새 닉네임 입력" required>
                                             <button class="btn btn-outline-secondary" type="button" id="btnCheckMypageNickname">중복 확인</button>
-                                            <button type="submit" class="btn btn-primary px-3">변경</button>
+                                            <button type="submit" class="btn btn-primary px-3">닉네임 변경</button>
                                         </div>
                                         <div id="mypageNicknameFeedback" class="form-text small">다른 회원과 중복되지 않는 닉네임을 설정해 주세요.</div>
                                     </div>
                                 </form>
 
-                                <!-- 2. 이메일 수정 폼 -->
+                                <!-- 3. 이메일 수정 폼 -->
                                 <form method="POST" action="{{ url_for('auth.update_profile') }}" class="mb-4 pb-3 border-bottom">
                                     <input type="hidden" name="action" value="update_email">
                                     <div class="mb-2">
@@ -91,7 +108,7 @@
                                     </div>
                                 </form>
 
-                                <!-- 3. 비밀번호 변경 폼 -->
+                                <!-- 4. 비밀번호 변경 폼 -->
                                 <form method="POST" action="{{ url_for('auth.update_profile') }}">
                                     <input type="hidden" name="action" value="update_password">
                                     <div class="mb-3">
