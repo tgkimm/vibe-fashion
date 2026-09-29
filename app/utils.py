@@ -36,7 +36,7 @@ def get_supabase_admin_client() -> Client | None:
     (RLS 우회, 사용자 완전 삭제 및 강제 비밀번호 변경 등에 사용)
     """
     supabase_url = os.getenv("SUPABASE_URL")
-    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SERVICE_KEY")
 
     if not supabase_url or not service_key:
         return None
