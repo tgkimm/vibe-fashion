@@ -1,37 +1,12 @@
 import logging
-import os
-from dotenv import load_dotenv
 from flask import Blueprint, render_template, request
-from supabase import create_client, Client
-
-# 환경 변수 로드 (.env 파일이 있으면 읽어옴)
-load_dotenv()
+from app.utils import get_supabase_client
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
 
 # 메인 기능 관련 라우트를 관리하는 블루프린트 생성
 main_bp = Blueprint("main", __name__)
-
-
-def get_supabase_client() -> Client | None:
-    """
-    환경변수에서 SUPABASE_URL과 SUPABASE_ANON_KEY를 읽어
-    Supabase 클라이언트를 초기화하여 반환합니다.
-    설정 누락 또는 초기화 실패 시 None을 반환합니다.
-    """
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_ANON_KEY")
-
-    if not supabase_url or not supabase_key:
-        logger.error("[Supabase 오류] SUPABASE_URL 또는 SUPABASE_ANON_KEY 환경변수가 설정되지 않았습니다.")
-        return None
-
-    try:
-        return create_client(supabase_url, supabase_key)
-    except Exception as e:
-        logger.error(f"[Supabase 연결 실패] 클라이언트 초기화 중 예외 발생: {e}", exc_info=True)
-        return None
 
 
 def format_product_item(item: dict) -> dict:

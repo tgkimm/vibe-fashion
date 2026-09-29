@@ -1,10 +1,8 @@
 import functools
 import logging
 import os
-import re
-from urllib.parse import urlencode
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
-from supabase import create_client, Client
+from app.utils import get_supabase_client, get_supabase_admin_client, extract_display_name
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
@@ -39,42 +37,6 @@ def get_site_url() -> str:
         return f"https://{website_hostname}".rstrip("/")
 
     return "https://vibe-fashion-002-ghcuezf9b7c4g3fs.koreacentral-01.azurewebsites.net"
-
-
-def get_supabase_client() -> Client | None:
-    """
-    환경변수에서 SUPABASE_URL과 SUPABASE_ANON_KEY를 읽어
-    Supabase 클라이언트를 초기화하여 반환합니다.
-    """
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_ANON_KEY")
-
-    if not supabase_url or not supabase_key:
-        logger.error("[Supabase 오류] SUPABASE_URL 또는 SUPABASE_ANON_KEY 환경변수가 설정되지 않았습니다.")
-        return None
-
-    try:
-        return create_client(supabase_url, supabase_key)
-    except Exception as e:
-        logger.error(f"[Supabase 연결 실패] 클라이언트 초기화 중 예외 발생: {e}", exc_info=True)
-        return None
-
-
-def get_supabase_admin_client() -> Client | None:
-    """
-    관리자 작업(사용자 검증, 비밀번호 강제 업데이트 등)을 위한 Service Role Supabase 클라이언트를 초기화하여 반환합니다.
-    """
-    supabase_url = os.getenv("SUPABASE_URL")
-    service_key = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_ANON_KEY")
-
-    if not supabase_url or not service_key:
-        return None
-
-    try:
-        return create_client(supabase_url, service_key)
-    except Exception as e:
-        logger.error(f"[Supabase Admin 클라이언트 오류] {e}", exc_info=True)
-        return None
 
 
 def login_required(view):
@@ -194,12 +156,7 @@ def login():
                         redirect_params["next"] = next_url
                     return redirect(url_for("auth.login", **redirect_params))
 
-                user_metadata = getattr(user, "user_metadata", {}) or {}
-                display_name = (
-                    user_metadata.get("name")
-                    or user_metadata.get("full_name")
-                    or (user.email.split("@")[0] if user.email else "회원")
-                )
+                display_name = extract_display_name(user)
 
                 # Flask session 저장
                 session["user"] = {
@@ -408,12 +365,7 @@ def confirm():
 
         if auth_response and auth_response.user:
             user = auth_response.user
-            user_metadata = getattr(user, "user_metadata", {}) or {}
-            display_name = (
-                user_metadata.get("name")
-                or user_metadata.get("full_name")
-                or (user.email.split("@")[0] if user.email else "회원")
-            )
+            display_name = extract_display_name(user)
 
             # 성공 시 Flask session 저장
             session["user"] = {
@@ -459,12 +411,7 @@ def confirm_session():
         user_response = supabase.auth.get_user(jwt=access_token)
         if user_response and user_response.user:
             user = user_response.user
-            user_metadata = getattr(user, "user_metadata", {}) or {}
-            display_name = (
-                user_metadata.get("name")
-                or user_metadata.get("full_name")
-                or (user.email.split("@")[0] if user.email else "회원")
-            )
+            display_name = extract_display_name(user)
 
             session["user"] = {
                 "id": str(user.id),
@@ -564,7 +511,7 @@ def reset_password():
                 session["user"] = {
                     "id": str(auth_response.user.id),
                     "email": auth_response.user.email,
-                    "name": (getattr(auth_response.user, "user_metadata", {}) or {}).get("name", "회원"),
+                    "name": extract_display_name(auth_response.user),
                 }
                 if auth_response.session and getattr(auth_response.session, "access_token", None):
                     session["access_token"] = auth_response.session.access_token
@@ -597,7 +544,7 @@ def reset_password():
                     session["user"] = {
                         "id": str(auth_response.user.id),
                         "email": auth_response.user.email,
-                        "name": (getattr(auth_response.user, "user_metadata", {}) or {}).get("name", "회원"),
+                        "name": extract_display_name(auth_response.user),
                     }
                     if auth_response.session and getattr(auth_response.session, "access_token", None):
                         session["access_token"] = auth_response.session.access_token
