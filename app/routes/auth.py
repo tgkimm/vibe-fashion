@@ -191,15 +191,13 @@ def login():
                 display_name = extract_display_name(user)
                 real_name = extract_real_name(user)
 
-                # profiles 테이블의 닉네임과 이름 조회 (동기화)
+                # profiles 테이블의 닉네임과 user_metadata의 실명 조회 및 동기화
                 try:
-                    p_res = supabase.table("profiles").select("name, real_name").eq("id", str(user.id)).execute()
+                    p_res = supabase.table("profiles").select("name").eq("id", str(user.id)).execute()
                     if p_res.data and len(p_res.data) > 0:
                         p_row = p_res.data[0]
                         if p_row.get("name"):
                             display_name = p_row.get("name")
-                        if p_row.get("real_name"):
-                            real_name = p_row.get("real_name")
                 except Exception as pe:
                     logger.warning(f"[로그인 프로필 조회 경고] {pe}")
 
@@ -437,13 +435,11 @@ def naver_callback():
             # profiles 테이블 확인 및 동기화
             if user_id:
                 try:
-                    profile_check = admin_client.table("profiles").select("id, name, real_name").eq("id", user_id).execute()
+                    profile_check = admin_client.table("profiles").select("id, name").eq("id", user_id).execute()
                     if profile_check.data and len(profile_check.data) > 0:
                         db_row = profile_check.data[0]
                         if db_row.get("name"):
                             nickname = db_row.get("name")
-                        if db_row.get("real_name"):
-                            real_name = db_row.get("real_name")
                     else:
                         profile_insert_data = {
                             "id": user_id,
@@ -453,11 +449,7 @@ def naver_callback():
                             "role": "customer",
                             "grade": "BRONZE"
                         }
-                        try:
-                            # real_name 컬럼이 있을 경우 저장
-                            admin_client.table("profiles").insert({**profile_insert_data, "real_name": real_name}).execute()
-                        except Exception:
-                            admin_client.table("profiles").insert(profile_insert_data).execute()
+                        admin_client.table("profiles").insert(profile_insert_data).execute()
                 except Exception as pe:
                     logger.warning(f"[네이버 프로필 테이블 동기화 경고] {pe}")
 
@@ -656,13 +648,11 @@ def confirm():
 
             # profiles 테이블 확인 및 동기화
             try:
-                p_res = supabase.table("profiles").select("name, real_name").eq("id", str(user.id)).execute()
+                p_res = supabase.table("profiles").select("name").eq("id", str(user.id)).execute()
                 if p_res.data and len(p_res.data) > 0:
                     p_row = p_res.data[0]
                     if p_row.get("name"):
                         display_name = p_row.get("name")
-                    if p_row.get("real_name"):
-                        real_name = p_row.get("real_name")
                 else:
                     # 신규 생성 (소셜 또는 이메일 첫 확인 시)
                     admin_client = get_supabase_admin_client()
@@ -674,10 +664,7 @@ def confirm():
                         "role": "customer",
                         "grade": "BRONZE"
                     }
-                    try:
-                        client_to_use.table("profiles").insert({**profile_payload, "real_name": real_name}).execute()
-                    except Exception:
-                        client_to_use.table("profiles").insert(profile_payload).execute()
+                    client_to_use.table("profiles").insert(profile_payload).execute()
             except Exception as pe:
                 logger.warning(f"[이메일/소셜 인증 후 profiles 동기화 경고] {pe}")
 
@@ -730,13 +717,11 @@ def confirm_session():
             real_name = extract_real_name(user)
 
             try:
-                p_res = supabase.table("profiles").select("name, real_name").eq("id", str(user.id)).execute()
+                p_res = supabase.table("profiles").select("name").eq("id", str(user.id)).execute()
                 if p_res.data and len(p_res.data) > 0:
                     p_row = p_res.data[0]
                     if p_row.get("name"):
                         display_name = p_row.get("name")
-                    if p_row.get("real_name"):
-                        real_name = p_row.get("real_name")
             except Exception as pe:
                 logger.warning(f"[해시 세션 profiles 조회 경고] {pe}")
 
@@ -984,17 +969,28 @@ def mypage():
 
     user_info = session.get("user")
     supabase = get_supabase_client()
-    if user_info and supabase:
+    admin_client = get_supabase_admin_client()
+    if user_info:
         try:
-            p_res = supabase.table("profiles").select("name, real_name").eq("id", user_info["id"]).execute()
-            if p_res.data and len(p_res.data) > 0:
-                p_row = p_res.data[0]
-                if p_row.get("name"):
-                    user_info["name"] = p_row.get("name")
-                if p_row.get("real_name"):
-                    user_info["real_name"] = p_row.get("real_name")
-                session["user"] = user_info
-                session.modified = True
+            # 1. 닉네임 최신화 (profiles 테이블)
+            client_to_use = admin_client or supabase
+            if client_to_use:
+                p_res = client_to_use.table("profiles").select("name").eq("id", user_info["id"]).execute()
+                if p_res.data and len(p_res.data) > 0:
+                    p_name = p_res.data[0].get("name")
+                    if p_name:
+                        user_info["name"] = p_name
+
+            # 2. 실명(이름) 최신화 (auth.users 메타데이터)
+            if admin_client:
+                u_res = admin_client.auth.admin.get_user_by_id(user_info["id"])
+                if u_res and getattr(u_res, "user", None):
+                    latest_real_name = extract_real_name(u_res.user)
+                    if latest_real_name:
+                        user_info["real_name"] = latest_real_name
+
+            session["user"] = user_info
+            session.modified = True
         except Exception as pe:
             logger.warning(f"[마이페이지 프로필 최신화 경고] {pe}")
 
@@ -1034,22 +1030,16 @@ def update_profile():
         if not new_name:
             return redirect(url_for("auth.mypage", error="name_required"))
 
-        # profiles 테이블 업데이트
-        try:
-            client_to_use = admin_client or supabase
-            try:
-                client_to_use.table("profiles").update({"real_name": new_name}).eq("id", user_id).execute()
-            except Exception as pe:
-                logger.warning(f"[profiles real_name 컬럼 업데이트 시도 실패] {pe}")
-        except Exception as e:
-            logger.error(f"[profiles 이름 변경 실패] {e}", exc_info=True)
-
-        # auth.users 메타데이터 업데이트
+        # auth.users 메타데이터의 real_name, full_name만 정확하게 업데이트 (닉네임/name은 건드리지 않음)
         if admin_client:
             try:
+                target_user = admin_client.auth.admin.get_user_by_id(user_id)
+                current_meta = dict(getattr(target_user.user, "user_metadata", {}) or {}) if target_user and getattr(target_user, "user", None) else {}
+                current_meta["real_name"] = new_name
+                current_meta["full_name"] = new_name
                 admin_client.auth.admin.update_user_by_id(
                     user_id,
-                    {"user_metadata": {"real_name": new_name, "full_name": new_name}}
+                    {"user_metadata": current_meta}
                 )
             except Exception as e:
                 logger.warning(f"[auth.users 메타데이터 이름 변경 실패] {e}")
@@ -1075,7 +1065,7 @@ def update_profile():
         except Exception as e:
             logger.warning(f"[닉네임 중복 확인 예외] {e}")
 
-        # profiles 테이블 업데이트
+        # profiles 테이블 업데이트 (name 컬럼만 업데이트)
         try:
             if admin_client:
                 admin_client.table("profiles").update({"name": new_nickname}).eq("id", user_id).execute()
@@ -1084,12 +1074,16 @@ def update_profile():
         except Exception as e:
             logger.error(f"[profiles 닉네임 변경 실패] {e}", exc_info=True)
 
-        # auth.users 메타데이터 업데이트
+        # auth.users 메타데이터 업데이트 (nickname, name만 업데이트, real_name은 보존)
         if admin_client:
             try:
+                target_user = admin_client.auth.admin.get_user_by_id(user_id)
+                current_meta = dict(getattr(target_user.user, "user_metadata", {}) or {}) if target_user and getattr(target_user, "user", None) else {}
+                current_meta["nickname"] = new_nickname
+                current_meta["name"] = new_nickname
                 admin_client.auth.admin.update_user_by_id(
                     user_id,
-                    {"user_metadata": {"nickname": new_nickname, "name": new_nickname}}
+                    {"user_metadata": current_meta}
                 )
             except Exception as e:
                 logger.warning(f"[auth.users 메타데이터 닉네임 변경 실패] {e}")

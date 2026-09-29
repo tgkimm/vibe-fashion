@@ -52,21 +52,28 @@ def extract_display_name(user) -> str:
     """
     Supabase user 객체에서 닉네임을 우선순위에 따라 추출합니다:
     1. user_metadata['nickname']
-    2. user_metadata['name']
-    3. user_metadata['full_name']
-    4. 이메일 아이디 부분 (@ 앞)
-    5. 기본값 '회원'
+    2. user_metadata['name'] (단, 소셜 프로바이더 기본 이름/실명이 아니라 닉네임 용도로 설정된 값)
+    3. 이메일 아이디 부분 (@ 앞)
+    4. 기본값 '회원'
     """
     if not user:
         return "회원"
     user_metadata = getattr(user, "user_metadata", {}) or {}
     email = getattr(user, "email", "") or ""
-    return (
-        user_metadata.get("nickname")
-        or user_metadata.get("name")
-        or user_metadata.get("full_name")
-        or (email.split("@")[0] if email else "회원")
-    )
+
+    nickname = user_metadata.get("nickname")
+    if nickname and nickname.strip():
+        return nickname.strip()
+
+    name = user_metadata.get("name")
+    if name and name.strip():
+        return name.strip()
+
+    full_name = user_metadata.get("full_name")
+    if full_name and full_name.strip():
+        return full_name.strip()
+
+    return (email.split("@")[0] if email else "회원")
 
 
 def extract_real_name(user) -> str:
@@ -76,17 +83,31 @@ def extract_real_name(user) -> str:
     2. user_metadata['full_name']
     3. user_metadata['user_name']
     4. user_metadata['preferred_username']
-    5. user_metadata['name'] (소셜 로그인 시 제공된 이름)
+    5. user_metadata['name']
     6. 빈 문자열
     """
     if not user:
         return ""
     user_metadata = getattr(user, "user_metadata", {}) or {}
-    return (
-        user_metadata.get("real_name")
-        or user_metadata.get("full_name")
-        or user_metadata.get("user_name")
-        or user_metadata.get("preferred_username")
-        or user_metadata.get("name")
-        or ""
-    ).strip()
+
+    real_name = user_metadata.get("real_name")
+    if real_name and real_name.strip():
+        return real_name.strip()
+
+    full_name = user_metadata.get("full_name")
+    if full_name and full_name.strip():
+        return full_name.strip()
+
+    user_name = user_metadata.get("user_name")
+    if user_name and user_name.strip():
+        return user_name.strip()
+
+    pref_name = user_metadata.get("preferred_username")
+    if pref_name and pref_name.strip():
+        return pref_name.strip()
+
+    name = user_metadata.get("name")
+    if name and name.strip():
+        return name.strip()
+
+    return ""
