@@ -15,20 +15,37 @@
                     <p class="text-muted small">VIBE-FASHION 회원으로 로그인하여 쇼핑을 즐겨보세요</p>
                 </div>
 
+                {% if error_msg %}
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    <i class="bi bi-exclamation-triangle me-1"></i>{{ error_msg }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+                {% endif %}
+
+                {% if success_msg %}
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    <i class="bi bi-check-circle me-1"></i>{{ success_msg }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+                {% endif %}
+
                 <form method="POST" action="{{ url_for('auth.login') }}">
                     <input type="hidden" name="next" value="{{ next or '' }}">
 
                     <div class="mb-3">
-                        <label for="login_id" class="form-label fw-semibold">아이디 또는 이메일</label>
+                        <label for="email" class="form-label fw-semibold">이메일 주소</label>
                         <div class="input-group">
-                            <span class="input-group-text bg-light border-end-0"><i class="bi bi-person text-muted"></i></span>
-                            <input type="text" class="form-control border-start-0 ps-0" id="login_id" name="login_id" value="{{ login_id or '' }}" placeholder="아이디 또는 이메일 주소" required autofocus>
+                            <span class="input-group-text bg-light border-end-0"><i class="bi bi-envelope text-muted"></i></span>
+                            <input type="email" class="form-control border-start-0 ps-0" id="email" name="email" value="{{ request.args.get('email', '') or email or '' }}" placeholder="name@example.com" required autofocus>
                         </div>
                     </div>
 
-                    <div class="mb-4">
-                        <label for="password" class="form-label fw-semibold">비밀번호</label>
-                        <div class="input-group">
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <label for="password" class="form-label fw-semibold mb-0">비밀번호</label>
+                            <a href="{{ url_for('auth.forgot_password') }}" class="small text-muted text-decoration-none">비밀번호 찾기</a>
+                        </div>
+                        <div class="input-group mt-1">
                             <span class="input-group-text bg-light border-end-0"><i class="bi bi-lock text-muted"></i></span>
                             <input type="password" class="form-control border-start-0 ps-0" id="password" name="password" placeholder="비밀번호 입력" required>
                         </div>
@@ -41,7 +58,7 @@
 
                 <div class="text-center border-top pt-3 mt-2">
                     <span class="text-muted small">아직 계정이 없으신가요?</span>
-                    <a href="{{ url_for('auth.register') }}" class="small fw-semibold text-primary ms-1 text-decoration-none">
+                    <a href="{{ url_for('auth.signup') }}" class="small fw-semibold text-primary ms-1 text-decoration-none">
                         회원가입 하기
                     </a>
                 </div>

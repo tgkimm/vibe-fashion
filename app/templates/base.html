@@ -55,6 +55,7 @@
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end shadow-sm">
                             <li><span class="dropdown-item-text text-muted small">{{ current_user.email }}</span></li>
+                            <li><a class="dropdown-item" href="{{ url_for('auth.mypage') }}"><i class="bi bi-person me-2"></i>마이페이지</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item text-danger" href="{{ url_for('auth.logout') }}"><i class="bi bi-box-arrow-right me-2"></i>로그아웃</a></li>
                         </ul>
@@ -62,7 +63,7 @@
                     {% else %}
                     <div class="d-flex gap-2">
                         <a href="{{ url_for('auth.login') }}" class="btn btn-outline-light btn-sm px-3">로그인</a>
-                        <a href="{{ url_for('auth.register') }}" class="btn btn-primary btn-sm px-3">회원가입</a>
+                        <a href="{{ url_for('auth.signup') }}" class="btn btn-primary btn-sm px-3">회원가입</a>
                     </div>
                     {% endif %}
                 </div>

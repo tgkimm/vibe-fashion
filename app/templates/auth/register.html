@@ -12,59 +12,63 @@
                         <i class="bi bi-person-plus-fill fs-2"></i>
                     </div>
                     <h3 class="fw-bold">회원가입</h3>
-                    <p class="text-muted small">간편 가입으로 VIBE-FASHION의 특별한 혜택을 누리세요</p>
+                    <p class="text-muted small">이메일 회원가입으로 VIBE-FASHION의 특별한 혜택을 누리세요</p>
                 </div>
 
-                <form method="POST" action="{{ url_for('auth.register') }}" id="registerForm">
-                    <!-- 1. 아이디 입력 및 실시간 중복 체크 -->
+                {% if error_msg %}
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    <i class="bi bi-exclamation-triangle me-1"></i>{{ error_msg }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+                {% endif %}
+
+                <form method="POST" action="{{ url_for('auth.signup') }}" id="registerForm">
+                    <!-- 1. 이메일 입력 -->
                     <div class="mb-3">
-                        <label for="username" class="form-label fw-semibold">아이디</label>
+                        <label for="email" class="form-label fw-semibold">이메일 주소 <span class="text-danger">*</span></label>
                         <div class="input-group">
-                            <span class="input-group-text bg-light border-end-0"><i class="bi bi-person text-muted"></i></span>
-                            <input type="text" class="form-control border-start-0 ps-0" id="username" name="username" value="{{ username or '' }}" placeholder="영문/숫자 3~20자" minlength="3" maxlength="20" required autofocus>
-                            <button class="btn btn-outline-secondary btn-sm px-3" type="button" id="btnCheckId">중복 확인</button>
+                            <span class="input-group-text bg-light border-end-0"><i class="bi bi-envelope text-muted"></i></span>
+                            <input type="email" class="form-control border-start-0 ps-0" id="email" name="email" value="{{ request.args.get('email', '') or email or '' }}" placeholder="name@example.com" required autofocus>
                         </div>
-                        <div id="idCheckFeedback" class="form-text mt-1 small"></div>
+                        <div class="form-text small text-muted">인증 링크가 발송될 유효한 이메일을 입력해 주세요.</div>
                     </div>
 
                     <!-- 2. 이름 입력 -->
                     <div class="mb-3">
-                        <label for="name" class="form-label fw-semibold">이름</label>
+                        <label for="name" class="form-label fw-semibold">이름 (선택)</label>
                         <div class="input-group">
-                            <span class="input-group-text bg-light border-end-0"><i class="bi bi-card-heading text-muted"></i></span>
-                            <input type="text" class="form-control border-start-0 ps-0" id="name" name="name" value="{{ name or '' }}" placeholder="홍길동" required>
+                            <span class="input-group-text bg-light border-end-0"><i class="bi bi-person text-muted"></i></span>
+                            <input type="text" class="form-control border-start-0 ps-0" id="name" name="name" value="{{ request.args.get('name', '') or name or '' }}" placeholder="홍길동">
                         </div>
                     </div>
 
                     <!-- 3. 비밀번호 입력 (보안 조건 실시간 표시) -->
                     <div class="mb-3">
-                        <label for="password" class="form-label fw-semibold">비밀번호</label>
+                        <label for="password" class="form-label fw-semibold">비밀번호 <span class="text-danger">*</span></label>
                         <div class="input-group">
                             <span class="input-group-text bg-light border-end-0"><i class="bi bi-lock text-muted"></i></span>
-                            <input type="password" class="form-control border-start-0 ps-0" id="password" name="password" placeholder="6자 이상, 대문자 및 특수기호 포함" required>
+                            <input type="password" class="form-control border-start-0 ps-0" id="password" name="password" placeholder="최소 6자 이상" minlength="6" required>
                         </div>
                         <div class="mt-2 p-2 bg-light rounded-2 border">
-                            <div class="small fw-semibold text-muted mb-1">비밀번호 안전 규칙:</div>
+                            <div class="small fw-semibold text-muted mb-1">비밀번호 규칙:</div>
                             <ul class="list-unstyled mb-0 small">
                                 <li id="rule-len" class="text-danger"><i class="bi bi-x-circle me-1"></i>최소 6자 이상</li>
-                                <li id="rule-upper" class="text-danger"><i class="bi bi-x-circle me-1"></i>영문 대문자(A-Z) 1개 이상 포함</li>
-                                <li id="rule-special" class="text-danger"><i class="bi bi-x-circle me-1"></i>특수문자(!@#$%^&* 등) 1개 이상 포함</li>
                             </ul>
                         </div>
                     </div>
 
                     <!-- 4. 비밀번호 확인 -->
                     <div class="mb-4">
-                        <label for="password_confirm" class="form-label fw-semibold">비밀번호 확인</label>
+                        <label for="password_confirm" class="form-label fw-semibold">비밀번호 확인 <span class="text-danger">*</span></label>
                         <div class="input-group">
                             <span class="input-group-text bg-light border-end-0"><i class="bi bi-shield-check text-muted"></i></span>
-                            <input type="password" class="form-control border-start-0 ps-0" id="password_confirm" name="password_confirm" placeholder="비밀번호 재입력" required>
+                            <input type="password" class="form-control border-start-0 ps-0" id="password_confirm" name="password_confirm" placeholder="비밀번호 재입력" minlength="6" required>
                         </div>
                         <div id="pwMatchFeedback" class="form-text mt-1 small"></div>
                     </div>
 
                     <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold rounded-3 mb-3" id="btnSubmit">
-                        회원가입 완료
+                        인증 메일 받고 회원가입
                     </button>
                 </form>
 
@@ -81,63 +85,13 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-    const usernameInput = document.getElementById("username");
-    const btnCheckId = document.getElementById("btnCheckId");
-    const idFeedback = document.getElementById("idCheckFeedback");
-
     const passwordInput = document.getElementById("password");
     const confirmInput = document.getElementById("password_confirm");
     const pwMatchFeedback = document.getElementById("pwMatchFeedback");
-
     const ruleLen = document.getElementById("rule-len");
-    const ruleUpper = document.getElementById("rule-upper");
-    const ruleSpecial = document.getElementById("rule-special");
 
-    // 1. 아이디 중복 체크 함수
-    function checkIdAvailability() {
-        const val = usernameInput.value.trim();
-        if (!val) {
-            idFeedback.textContent = "아이디를 입력해 주세요.";
-            idFeedback.className = "form-text mt-1 small text-danger";
-            return;
-        }
-
-        idFeedback.textContent = "확인 중...";
-        idFeedback.className = "form-text mt-1 small text-muted";
-
-        fetch("{{ url_for('auth.check_id') }}", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ username: val })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.available) {
-                idFeedback.textContent = "✓ " + data.message;
-                idFeedback.className = "form-text mt-1 small text-success fw-semibold";
-            } else {
-                idFeedback.textContent = "✗ " + data.message;
-                idFeedback.className = "form-text mt-1 small text-danger fw-semibold";
-            }
-        })
-        .catch(() => {
-            idFeedback.textContent = "중복 확인 중 오류가 발생했습니다.";
-            idFeedback.className = "form-text mt-1 small text-danger";
-        });
-    }
-
-    btnCheckId.addEventListener("click", checkIdAvailability);
-    usernameInput.addEventListener("blur", () => {
-        if (usernameInput.value.trim().length >= 3) {
-            checkIdAvailability();
-        }
-    });
-
-    // 2. 비밀번호 강도 실시간 검증
     function updatePasswordRules() {
         const pw = passwordInput.value;
-        
-        // 최소 6자
         if (pw.length >= 6) {
             ruleLen.className = "text-success";
             ruleLen.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>최소 6자 이상';
@@ -145,25 +99,6 @@ document.addEventListener("DOMContentLoaded", () => {
             ruleLen.className = "text-danger";
             ruleLen.innerHTML = '<i class="bi bi-x-circle me-1"></i>최소 6자 이상';
         }
-
-        // 대문자 포함
-        if (/[A-Z]/.test(pw)) {
-            ruleUpper.className = "text-success";
-            ruleUpper.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>영문 대문자(A-Z) 1개 이상 포함';
-        } else {
-            ruleUpper.className = "text-danger";
-            ruleUpper.innerHTML = '<i class="bi bi-x-circle me-1"></i>영문 대문자(A-Z) 1개 이상 포함';
-        }
-
-        // 특수기호 포함
-        if (/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?/~`]/.test(pw)) {
-            ruleSpecial.className = "text-success";
-            ruleSpecial.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>특수문자(!@#$%^&* 등) 1개 이상 포함';
-        } else {
-            ruleSpecial.className = "text-danger";
-            ruleSpecial.innerHTML = '<i class="bi bi-x-circle me-1"></i>특수문자(!@#$%^&* 등) 1개 이상 포함';
-        }
-
         checkMatch();
     }
 

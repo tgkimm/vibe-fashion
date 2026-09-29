@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}회원가입 안내 | VIBE-FASHION{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-12 col-md-8 col-lg-6">
+            <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5 text-center">
+                <div class="rounded-circle bg-success bg-opacity-10 d-inline-flex align-items-center justify-content-center p-3 mb-3 text-success mx-auto" style="width: 72px; height: 72px;">
+                    <i class="bi bi-envelope-check-fill fs-2"></i>
+                </div>
+                <h3 class="fw-bold mb-2">인증 메일을 보냈습니다</h3>
+                <p class="text-muted mb-4">
+                    {% if email %}
+                    <strong>{{ email }}</strong> 으로 인증 메일이 발송되었습니다.<br>
+                    {% endif %}
+                    메일함에서 인증 링크를 클릭하여 회원가입을 완료해 주세요.
+                </p>
+
+                {% if success_msg %}
+                <div class="alert alert-success alert-dismissible fade show text-start" role="alert">
+                    <i class="bi bi-check-circle me-1"></i>{{ success_msg }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+                {% endif %}
+
+                {% if error_msg %}
+                <div class="alert alert-danger alert-dismissible fade show text-start" role="alert">
+                    <i class="bi bi-exclamation-triangle me-1"></i>{{ error_msg }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+                {% endif %}
+
+                <div class="bg-light rounded-3 p-3 text-muted small text-start mb-4 border">
+                    <div class="fw-semibold mb-1 text-secondary"><i class="bi bi-info-circle me-1"></i>안내사항</div>
+                    <ul class="mb-0 ps-3">
+                        <li>메일이 도착하지 않은 경우 스팸 메일함을 확인해 주세요.</li>
+                        <li>인증 링크는 일정 시간 후 만료될 수 있습니다.</li>
+                    </ul>
+                </div>
+
+                <div class="d-flex justify-content-center gap-2">
+                    <a href="{{ url_for('auth.login') }}" class="btn btn-primary px-4 py-2 fw-semibold rounded-3">
+                        로그인으로 이동
+                    </a>
+                    <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary px-4 py-2 fw-semibold rounded-3">
+                        홈으로 가기
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
