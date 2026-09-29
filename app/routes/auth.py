@@ -203,6 +203,35 @@ def login():
     )
 
 
+@auth_bp.route("/kakao")
+def kakao_login():
+    """
+    카카오 OAuth 로그인 시작:
+    - Supabase signInWithOAuth를 통해 카카오 인증 URL 생성 후 리다이렉트
+    - 인증 완료 후 콜백 주소: {SITE_URL}/auth/confirm
+    """
+    supabase = get_supabase_client()
+    if not supabase:
+        return redirect(url_for("auth.login", error="auth_error"))
+
+    site_url = get_site_url()
+    redirect_to = f"{site_url}/auth/confirm"
+
+    try:
+        res = supabase.auth.sign_in_with_oauth({
+            "provider": "kakao",
+            "options": {
+                "redirect_to": redirect_to
+            }
+        })
+        if res and hasattr(res, "url") and res.url:
+            return redirect(res.url)
+        return redirect(url_for("auth.login", error="auth_error"))
+    except Exception as e:
+        logger.error(f"[카카오 로그인 시작 오류] {e}", exc_info=True)
+        return redirect(url_for("auth.login", error="auth_error"))
+
+
 @auth_bp.route("/signup", methods=["GET", "POST"])
 @auth_bp.route("/register", methods=["GET", "POST"])
 def signup():
