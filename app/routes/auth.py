@@ -1,6 +1,10 @@
 import functools
+import json
 import logging
 import os
+import secrets
+import urllib.parse
+import urllib.request
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
 from app.utils import get_supabase_client, get_supabase_admin_client, extract_display_name
 
@@ -98,6 +102,8 @@ def get_error_message(code: str) -> str:
         "nickname_exists": "이미 다른 회원이 사용 중인 닉네임입니다. 다른 닉네임을 입력해 주세요.",
         "nickname_too_short": "닉네임은 2자 이상이어야 합니다.",
         "smtp_error": "SMTP 메일 서버 연결에 실패했습니다. Supabase의 SMTP 설정을 확인해 주세요.",
+        "naver_not_configured": "네이버 로그인 설정(Client ID/Secret)이 완료되지 않았습니다.",
+        "naver_auth_failed": "네이버 로그인 인증에 실패했습니다.",
         "login_required": "로그인이 필요한 서비스입니다.",
         "delete_failed": "회원 탈퇴 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
     }
@@ -266,6 +272,172 @@ def kakao_login():
     except Exception as e:
         logger.error(f"[카카오 로그인 시작 오류] {e}", exc_info=True)
         return redirect(url_for("auth.login", error="auth_error"))
+
+
+@auth_bp.route("/naver")
+def naver_login():
+    """
+    네이버 OAuth 로그인 시작:
+    - NAVER_CLIENT_ID, NAVER_REDIRECT_URI를 읽어 네이버 인증 페이지로 리다이렉트
+    - CSRF 방지를 위한 state 토큰 생성 및 Flask session 저장
+    """
+    client_id = os.getenv("NAVER_CLIENT_ID")
+    if not client_id or "your_naver" in client_id:
+        logger.warning("[네이버 로그인] NAVER_CLIENT_ID 환경변수가 설정되지 않았습니다.")
+        return redirect(url_for("auth.login", error="naver_not_configured"))
+
+    custom_redirect = os.getenv("NAVER_REDIRECT_URI")
+    if custom_redirect and custom_redirect.strip():
+        redirect_uri = custom_redirect.strip()
+    else:
+        site_url = get_site_url()
+        redirect_uri = f"{site_url}/auth/naver/callback"
+
+    state = secrets.token_urlsafe(16)
+    session["naver_oauth_state"] = state
+    session.modified = True
+
+    params = {
+        "response_type": "code",
+        "client_id": client_id.strip(),
+        "redirect_uri": redirect_uri,
+        "state": state
+    }
+    naver_auth_url = f"https://nid.naver.com/oauth2.0/authorize?{urllib.parse.urlencode(params)}"
+    return redirect(naver_auth_url)
+
+
+@auth_bp.route("/naver/callback")
+def naver_callback():
+    """
+    네이버 OAuth 인증 콜백:
+    1. state 검증
+    2. 네이버 토큰 발급 API 호출 (code -> access_token)
+    3. 네이버 회원 프로필 조회 API 호출
+    4. Supabase auth.users 및 profiles 테이블 연동 / 가입 / 세션 등록
+    """
+    code = request.args.get("code")
+    state = request.args.get("state")
+    saved_state = session.pop("naver_oauth_state", None)
+
+    if not code or not state or state != saved_state:
+        logger.error("[네이버 로그인] state 불일치 또는 code 누락")
+        return redirect(url_for("auth.login", error="naver_auth_failed"))
+
+    client_id = os.getenv("NAVER_CLIENT_ID", "").strip()
+    client_secret = os.getenv("NAVER_CLIENT_SECRET", "").strip()
+
+    if not client_id or not client_secret or "your_naver" in client_id:
+        return redirect(url_for("auth.login", error="naver_not_configured"))
+
+    # 1. 접근 토큰 요청
+    token_url = "https://nid.naver.com/oauth2.0/token"
+    token_params = {
+        "grant_type": "authorization_code",
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "code": code,
+        "state": state
+    }
+
+    try:
+        req = urllib.request.Request(
+            f"{token_url}?{urllib.parse.urlencode(token_params)}",
+            headers={"User-Agent": "Mozilla/5.0"}
+        )
+        with urllib.request.urlopen(req) as response:
+            token_data = json.loads(response.read().decode("utf-8"))
+
+        naver_access_token = token_data.get("access_token")
+        if not naver_access_token:
+            logger.error(f"[네이버 로그인] 토큰 발급 실패: {token_data}")
+            return redirect(url_for("auth.login", error="naver_auth_failed"))
+
+        # 2. 네이버 프로필 정보 조회
+        profile_url = "https://openapi.naver.com/v1/nid/me"
+        profile_req = urllib.request.Request(
+            profile_url,
+            headers={
+                "Authorization": f"Bearer {naver_access_token}",
+                "User-Agent": "Mozilla/5.0"
+            }
+        )
+        with urllib.request.urlopen(profile_req) as profile_res:
+            profile_json = json.loads(profile_res.read().decode("utf-8"))
+
+        if profile_json.get("resultcode") != "00":
+            logger.error(f"[네이버 로그인] 프로필 조회 실패: {profile_json}")
+            return redirect(url_for("auth.login", error="naver_auth_failed"))
+
+        naver_account = profile_json.get("response", {})
+        naver_id = naver_account.get("id")
+        email = naver_account.get("email") or f"naver_{naver_id[:10]}@naver.com"
+        nickname = naver_account.get("nickname") or naver_account.get("name") or email.split("@")[0]
+        profile_image = naver_account.get("profile_image")
+
+        # 3. Supabase 회원 연동 (Admin 클라이언트 활용)
+        admin_client = get_supabase_admin_client()
+        supabase = get_supabase_client()
+
+        user_id = None
+        if admin_client:
+            # 이메일로 기존 계정 확인
+            existing_users = admin_client.auth.admin.list_users()
+            target_user = next((u for u in existing_users if getattr(u, "email", None) == email), None)
+
+            if target_user:
+                user_id = str(target_user.id)
+                # 기존 닉네임 가져오기
+                meta = getattr(target_user, "user_metadata", {}) or {}
+                nickname = meta.get("name") or nickname
+            else:
+                # 신규 계정 생성
+                new_user = admin_client.auth.admin.create_user({
+                    "email": email,
+                    "email_confirm": True,
+                    "user_metadata": {
+                        "name": nickname,
+                        "full_name": nickname,
+                        "picture": profile_image,
+                        "avatar_url": profile_image,
+                        "provider": "naver"
+                    }
+                })
+                if new_user and new_user.user:
+                    user_id = str(new_user.user.id)
+
+            # profiles 테이블 확인 및 동기화
+            if user_id:
+                try:
+                    profile_check = admin_client.table("profiles").select("id, name").eq("id", user_id).execute()
+                    if profile_check.data and len(profile_check.data) > 0:
+                        db_name = profile_check.data[0].get("name")
+                        if db_name:
+                            nickname = db_name
+                    else:
+                        admin_client.table("profiles").insert({
+                            "id": user_id,
+                            "email": email,
+                            "name": nickname,
+                            "avatar_url": profile_image,
+                            "role": "customer",
+                            "grade": "BRONZE"
+                        }).execute()
+                except Exception as pe:
+                    logger.warning(f"[네이버 프로필 테이블 동기화 경고] {pe}")
+
+        # 4. 세션 등록 및 로그인 완료
+        session["user"] = {
+            "id": user_id or f"naver_{naver_id}",
+            "email": email,
+            "name": nickname,
+        }
+        session.permanent = True
+        return redirect(url_for("auth.mypage"))
+
+    except Exception as e:
+        logger.error(f"[네이버 콜백 처리 오류] {e}", exc_info=True)
+        return redirect(url_for("auth.login", error="naver_auth_failed"))
 
 
 @auth_bp.route("/signup", methods=["GET", "POST"])
