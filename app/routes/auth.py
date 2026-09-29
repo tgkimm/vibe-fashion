@@ -98,17 +98,18 @@ def get_error_message(code: str) -> str:
     URL error 파라미터 코드를 한국어 에러 메시지로 변환합니다.
     """
     messages = {
-        "email_not_confirmed": "이메일 인증이 완료되지 않았습니다. 메일함의 인증 링크를 확인해 주세요.",
+        "email_not_confirmed": "이메일 인증이 완료되지 않았습니다. 메일함의 인증 링크를 클릭하여 인증을 완료해 주세요.",
         "invalid_credentials": "이메일 또는 비밀번호가 일치하지 않습니다.",
         "missing_fields": "필수 입력 항목을 모두 작성해 주세요.",
         "invalid_email": "올바른 이메일 형식을 입력해 주세요.",
         "password_too_short": "비밀번호는 최소 6자 이상이어야 합니다.",
         "password_mismatch": "비밀번호 확인이 일치하지 않습니다.",
-        "invalid_token": "인증 토큰이 유효하지 않거나 만료되었습니다.",
+        "invalid_token": "인증 토큰이 유효하지 않거나 만료되었습니다. 다시 시도해 주세요.",
         "token_required": "인증 토큰 또는 링크 정보가 누락되었습니다.",
-        "reset_failed": "비밀번호 재설정 처리 중 오류가 발생했습니다.",
+        "reset_failed": "비밀번호 재설정 처리 중 오류가 발생했습니다. 이메일과 인증코드를 확인해 주세요.",
         "auth_error": "인증 서비스 연결에 실패했습니다. 잠시 후 다시 시도해 주세요.",
         "login_required": "로그인이 필요한 서비스입니다.",
+        "delete_failed": "회원 탈퇴 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
     }
     return messages.get(code, "요청 처리 중 오류가 발생했습니다.")
 
@@ -120,9 +121,10 @@ def get_success_message(code: str) -> str:
     messages = {
         "signup_sent": "회원가입 인증 메일을 발송했습니다. 메일함을 확인해 주세요.",
         "confirmed": "이메일 인증이 성공적으로 완료되었습니다.",
-        "reset_sent": "비밀번호 재설정 링크가 이메일로 발송되었습니다.",
+        "reset_sent": "비밀번호 재설정 링크(및 인증코드)가 이메일로 발송되었습니다. 메일함을 확인해 주세요.",
         "password_changed": "비밀번호가 성공적으로 변경되었습니다. 새 비밀번호로 로그인해 주세요.",
         "logged_out": "정상적으로 로그아웃되었습니다.",
+        "account_deleted": "회원 탈퇴가 완료되었습니다. 그동안 이용해 주셔서 감사합니다.",
     }
     return messages.get(code, code)
 
@@ -172,6 +174,19 @@ def login():
 
             if auth_response and auth_response.user:
                 user = auth_response.user
+
+                # 이메일 미인증 상태 검증 (email_confirmed_at / confirmed_at 확인)
+                is_confirmed = bool(
+                    getattr(user, "email_confirmed_at", None)
+                    or getattr(user, "confirmed_at", None)
+                )
+
+                if not is_confirmed:
+                    redirect_params = {"error": "email_not_confirmed", "email": email}
+                    if next_url:
+                        redirect_params["next"] = next_url
+                    return redirect(url_for("auth.login", **redirect_params))
+
                 user_metadata = getattr(user, "user_metadata", {}) or {}
                 display_name = (
                     user_metadata.get("name")
@@ -444,8 +459,7 @@ def forgot_password():
 def reset_password():
     """
     [6] GET/POST /auth/reset-password - 새 비밀번호 설정
-    - Supabase 이메일 링크를 통해 유입되거나 세션이 있는 경우 새 비밀번호 적용
-    - URL 파라미터에 token_hash, code 등이 포함된 경우 세션 교환 또는 update_user 처리
+    - 링크 클릭(token_hash 또는 code) 또는 이메일+인증코드 입력을 통한 이메일 인증 기반 비밀번호 재설정
     """
     error_code = request.args.get("error", "")
     error_msg = get_error_message(error_code) if error_code else None
@@ -455,12 +469,13 @@ def reset_password():
 
     supabase = get_supabase_client()
 
-    # GET 요청 시 전달된 파라미터 캡처
+    # GET/POST 시 전달된 파라미터 캡처
     token = request.args.get("token") or request.args.get("token_hash") or request.form.get("token")
     code = request.args.get("code") or request.form.get("code")
     req_type = request.args.get("type", "recovery")
+    email = request.args.get("email") or request.form.get("email", "").strip()
 
-    # 만약 code나 token이 있고 세션이 아직 없다면 검증 시도
+    # 링크를 통해 token이나 code로 바로 진입한 경우 세션 인증 교환 시도
     if (code or token) and "user" not in session and supabase:
         try:
             auth_response = None
@@ -486,24 +501,47 @@ def reset_password():
     if request.method == "POST":
         password = request.form.get("password", "").strip()
         password_confirm = request.form.get("password_confirm", "").strip()
+        otp_token = request.form.get("otp_token", "").strip()
 
         if not password:
-            return redirect(url_for("auth.reset_password", error="missing_fields"))
+            return redirect(url_for("auth.reset_password", error="missing_fields", email=email))
 
         if len(password) < 6:
-            return redirect(url_for("auth.reset_password", error="password_too_short"))
+            return redirect(url_for("auth.reset_password", error="password_too_short", email=email))
 
         if password != password_confirm:
-            return redirect(url_for("auth.reset_password", error="password_mismatch"))
+            return redirect(url_for("auth.reset_password", error="password_mismatch", email=email))
+
+        # 세션이 없고 직접 이메일과 인증코드를 입력한 경우 verify_otp로 이메일 인증 먼저 수행
+        if "user" not in session and otp_token and email and supabase:
+            try:
+                auth_response = supabase.auth.verify_otp({
+                    "email": email,
+                    "token": otp_token,
+                    "type": "recovery"
+                })
+                if auth_response and auth_response.user:
+                    session["user"] = {
+                        "id": str(auth_response.user.id),
+                        "email": auth_response.user.email,
+                        "name": (getattr(auth_response.user, "user_metadata", {}) or {}).get("name", "회원"),
+                    }
+                    if auth_response.session and getattr(auth_response.session, "access_token", None):
+                        session["access_token"] = auth_response.session.access_token
+            except Exception as e:
+                logger.error(f"[이메일 인증코드 검증 실패] {e}", exc_info=True)
+                return redirect(url_for("auth.reset_password", error="invalid_token", email=email))
 
         user_info = session.get("user")
         access_token = session.get("access_token")
+
+        if not user_info and not access_token:
+            return redirect(url_for("auth.reset_password", error="token_required", email=email))
 
         # 1. access_token이 있는 경우 일반 클라이언트 update_user 시도
         updated = False
         if access_token and supabase:
             try:
-                # 직접 Authorization 헤더로 user 업데이트
                 supabase.auth._request(
                     "PUT",
                     "user",
@@ -532,13 +570,17 @@ def reset_password():
             session.pop("access_token", None)
             return redirect(url_for("auth.login", msg="password_changed"))
         else:
-            return redirect(url_for("auth.reset_password", error="reset_failed"))
+            return redirect(url_for("auth.reset_password", error="reset_failed", email=email))
+
+    has_valid_session = bool(session.get("user") or session.get("access_token"))
 
     return render_template(
         "auth/reset_password.html",
         token=token,
         code=code,
         type=req_type,
+        email=email,
+        has_valid_session=has_valid_session,
         error_msg=error_msg,
         success_msg=success_msg
     )
@@ -553,6 +595,49 @@ def mypage():
     - 회원 정보 표시
     """
     return render_template("mypage.html", user=session.get("user"))
+
+
+@auth_bp.route("/delete-account", methods=["POST"])
+@login_required
+def delete_account():
+    """
+    회원 탈퇴:
+    - 로그인된 본인 계정(profiles 및 auth.users)을 삭제하고 세션 종료
+    """
+    user_info = session.get("user")
+    if not user_info or not user_info.get("id"):
+        return redirect(url_for("auth.login", error="login_required"))
+
+    user_id = user_info["id"]
+
+    try:
+        # 1. profiles 및 연관 데이터 정리
+        supabase = get_supabase_client()
+        admin_client = get_supabase_admin_client()
+
+        # profiles 테이블 데이터 삭제
+        if admin_client:
+            try:
+                admin_client.table("profiles").delete().eq("id", user_id).execute()
+            except Exception as e:
+                logger.warning(f"[프로필 삭제 경고] {e}")
+
+            # auth.users 계정 삭제
+            admin_client.auth.admin.delete_user(user_id)
+        elif supabase:
+            try:
+                supabase.table("profiles").delete().eq("id", user_id).execute()
+            except Exception as e:
+                logger.warning(f"[프로필 삭제 경고] {e}")
+
+        # 2. 세션 정리
+        session.clear()
+        return redirect(url_for("auth.login", msg="account_deleted"))
+
+    except Exception as e:
+        logger.error(f"[회원 탈퇴 처리 실패] {e}", exc_info=True)
+        flash("회원 탈퇴 처리 중 오류가 발생했습니다.", "danger")
+        return redirect(url_for("auth.mypage"))
 
 
 @auth_bp.route("/logout")
