@@ -275,7 +275,7 @@ def kakao_login():
             "options": {
                 "redirect_to": redirect_to,
                 "query_params": {
-                    "prompt": "select_account"
+                    "prompt": "login consent"
                 }
             }
         })
