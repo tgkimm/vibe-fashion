@@ -26,6 +26,7 @@ def view_cart():
     logger.info(f"[장바구니 조회] user_id={user_id}")
 
     supabase = get_supabase_client()
+    admin_supabase = get_supabase_admin_client() or supabase
 
     if not supabase:
         logger.error("[장바구니 조회] Supabase 연결 실패")
@@ -33,9 +34,9 @@ def view_cart():
         return redirect(url_for("main.index"))
 
     try:
-        # 2. 현재 사용자의 장바구니 아이템 조회
+        # 2. 현재 사용자의 장바구니 아이템 조회 (admin 클라이언트 사용 - RLS 우회)
         cart_res = (
-            supabase.table("carts")
+            admin_supabase.table("carts")
             .select("id, product_id, option_id, quantity")
             .eq("user_id", user_id)
             .order("created_at", desc=False)
