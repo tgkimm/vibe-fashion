@@ -298,41 +298,50 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     // ===== 삭제 기능 =====
-    // 삭제 버튼 클릭
-    const cartTable = document.querySelector(".table");
     const confirmDeleteBtn = document.getElementById("confirmDeleteBtn");
     const deleteProductName = document.getElementById("deleteProductName");
     
-    console.log(`[초기화] cartTable: ${cartTable ? '✓' : '✗'}`);
     console.log(`[초기화] confirmDeleteBtn: ${confirmDeleteBtn ? '✓' : '✗'}`);
+    console.log(`[초기화] .btn-remove 버튼 개수: ${document.querySelectorAll(".btn-remove").length}개`);
     
-    if (cartTable) {
-        cartTable.addEventListener("click", (e) => {
-            const removeBtn = e.target.closest(".btn-remove");
-            if (!removeBtn) return;
-            
-            e.preventDefault();
-            e.stopPropagation();
-            
-            const cartId = removeBtn.dataset.cartId;
-            const productName = removeBtn.dataset.productName || "이 상품";
-            
-            console.log(`[삭제] .btn-remove 클릭: cartId=${cartId}, productName=${productName}`);
-            
-            // ✅ 핵심: 모달 버튼에 cartId를 data attribute로 저장
+    // ✅ 핵심: document 레벨에서 .btn-remove 클릭 감지
+    document.addEventListener("click", (e) => {
+        // .btn-remove 클래스를 찾기 (부모 요소 포함)
+        const removeBtn = e.target.closest(".btn-remove");
+        if (!removeBtn) {
+            return;  // .btn-remove가 아니면 무시
+        }
+        
+        console.log(`[삭제 버튼] ✓ 클릭됨 (e.target 확인)`);
+        
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const cartId = removeBtn.dataset.cartId;
+        const productName = removeBtn.dataset.productName || "이 상품";
+        
+        console.log(`[삭제 버튼] cartId=${cartId}, productName=${productName}`);
+        console.log(`[삭제 버튼] confirmDeleteBtn에 cartId 저장...`);
+        
+        // ✅ 모달 버튼에 cartId를 data attribute로 저장
+        if (confirmDeleteBtn) {
             confirmDeleteBtn.dataset.cartId = cartId;
-            console.log(`[삭제] confirmDeleteBtn.dataset.cartId 설정: ${confirmDeleteBtn.dataset.cartId}`);
-            
-            // 모달에 상품명 설정
-            if (deleteProductName) {
-                deleteProductName.textContent = productName;
-            }
-            
-            // 모달 표시
-            deleteConfirmModal?.show();
-            console.log(`[삭제] 모달 표시됨`);
-        });
-    }
+            console.log(`[삭제 버튼] ✓ confirmDeleteBtn.dataset.cartId = "${cartId}"`);
+        } else {
+            console.error(`[삭제 버튼] ✗ confirmDeleteBtn이 없음!`);
+        }
+        
+        // 모달에 상품명 설정
+        if (deleteProductName) {
+            deleteProductName.textContent = productName;
+        }
+        
+        // 모달 표시
+        if (deleteConfirmModal) {
+            deleteConfirmModal.show();
+            console.log(`[삭제 버튼] ✓ 모달 표시`);
+        }
+    }, true);  // ✅ 캡처 단계에서 감지
     
     // 모달의 삭제 확인 버튼 클릭
     if (confirmDeleteBtn) {
@@ -340,17 +349,22 @@ document.addEventListener("DOMContentLoaded", () => {
             e.preventDefault();
             e.stopPropagation();
             
-            // ✅ 핵심: 모달 버튼에서 직접 cartId를 읽기
-            const cartId = confirmDeleteBtn.dataset.cartId;
-            console.log(`[삭제 확인] 버튼 클릭됨, cartId=${cartId}`);
+            console.log(`[모달 삭제] 버튼 클릭됨`);
             
-            if (!cartId) {
-                console.error(`[삭제 확인] cartId가 없음: "${cartId}"`);
+            const cartId = confirmDeleteBtn.dataset.cartId;
+            console.log(`[모달 삭제] confirmDeleteBtn.dataset.cartId 읽기: "${cartId}"`);
+            console.log(`[모달 삭제] 타입: ${typeof cartId}`);
+            console.log(`[모달 삭제] 빈 문자열? ${cartId === ""}`);
+            console.log(`[모달 삭제] null? ${cartId === null}`);
+            console.log(`[모달 삭제] undefined? ${cartId === undefined}`);
+            
+            if (!cartId || cartId === "") {
+                console.error(`[모달 삭제] ✗ cartId가 없음: "${cartId}"`);
                 alert("선택된 상품이 없습니다.");
                 return;
             }
             
-            console.log(`[삭제 확인] DELETE 요청 시작: /cart/${cartId}`);
+            console.log(`[모달 삭제] ✓ DELETE 요청: /cart/${cartId}`);
             
             // 모달 닫기
             deleteConfirmModal?.hide();
