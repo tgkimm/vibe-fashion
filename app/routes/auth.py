@@ -93,6 +93,7 @@ def get_error_message(code: str) -> str:
         "password_need_uppercase": "비밀번호에 최소 1개 이상의 영문 대문자가 포함되어야 합니다.",
         "password_need_special": "비밀번호에 최소 1개 이상의 특수문자(!@#$%^&* 등)가 포함되어야 합니다.",
         "password_mismatch": "비밀번호 확인이 일치하지 않습니다.",
+        "password_same_as_current": "새로운 비밀번호가 현재 비밀번호와 동일합니다.",
         "invalid_token": "인증 토큰이 유효하지 않거나 만료되었습니다. 다시 시도해 주세요.",
         "token_required": "인증 토큰 또는 링크 정보가 누락되었습니다.",
         "reset_failed": "비밀번호 재설정 처리 중 오류가 발생했습니다. 이메일과 인증코드를 확인해 주세요.",
@@ -973,6 +974,7 @@ def mypage():
     supabase = get_supabase_client()
     admin_client = get_supabase_admin_client()
     profile = {}
+    is_email_user = True
 
     if user_info:
         try:
@@ -988,18 +990,26 @@ def mypage():
                     if p_real_name:
                         user_info["real_name"] = p_real_name
 
-            # 실명(이름) 최신화 (auth.users 메타데이터 보완)
+            # 실명(이름) 최신화 및 가입 방식(이메일 vs 소셜) 확인
             if admin_client:
                 u_res = admin_client.auth.admin.get_user_by_id(user_info["id"])
                 if u_res and getattr(u_res, "user", None):
-                    latest_real_name = extract_real_name(u_res.user)
+                    target_u = u_res.user
+                    latest_real_name = extract_real_name(target_u)
                     if latest_real_name:
                         user_info["real_name"] = latest_real_name
                         if not profile.get("real_name"):
                             profile["real_name"] = latest_real_name
-                    meta = getattr(u_res.user, "user_metadata", {}) or {}
+                    meta = getattr(target_u, "user_metadata", {}) or {}
                     if not profile.get("address") and meta.get("address"):
                         profile["address"] = meta.get("address")
+
+                    # 소셜 로그인 가입 여부 판별 (Microsoft, Kakao 등)
+                    app_meta = getattr(target_u, "app_metadata", {}) or {}
+                    provider = app_meta.get("provider", "email")
+                    providers = app_meta.get("providers", []) or []
+                    if provider != "email" and "email" not in providers:
+                        is_email_user = False
 
             session["user"] = user_info
             session.modified = True
@@ -1010,6 +1020,7 @@ def mypage():
         "mypage.html",
         user=session.get("user"),
         profile=profile,
+        is_email_user=is_email_user,
         error_msg=error_msg,
         success_msg=success_msg
     )
@@ -1170,6 +1181,9 @@ def update_profile():
         if not user_email:
             return redirect(url_for("auth.mypage", error="auth_error"))
 
+        if current_password == new_password:
+            return redirect(url_for("auth.mypage", error="password_same_as_current"))
+
         try:
             verify_res = supabase.auth.sign_in_with_password({
                 "email": user_email,
@@ -1298,6 +1312,97 @@ def update_profile():
         return redirect(url_for("auth.mypage", msg="profile_updated"))
 
     return redirect(url_for("auth.mypage"))
+
+
+@auth_bp.route("/mypage/change-password", methods=["POST"])
+@login_required
+def change_password():
+    """
+    [2] POST /mypage/change-password
+    - 기존 비밀번호 검증 (Supabase sign_in_with_password로 재인증 확인)
+    - 새 비밀번호는 이메일 가입 때와 동일한 복잡도 검증 적용 (validate_password_complexity)
+    - Supabase update_user_by_id()를 사용하여 비밀번호 변경
+    - 기존 비밀번호 불일치 시 error="current_password_incorrect"
+    - 새 비밀번호와 기존 비밀번호 동일 시 error="password_same_as_current"
+    - 성공 시 msg="password_updated" ("비밀번호가 성공적으로 변경되었습니다")로 /mypage 리다이렉트
+    """
+    user_info = session.get("user")
+    if not user_info or not user_info.get("id"):
+        return redirect(url_for("auth.login", error="login_required"))
+
+    user_id = user_info["id"]
+    user_email = user_info.get("email")
+    if not user_email:
+        return redirect(url_for("auth.mypage", error="auth_error"))
+
+    current_password = request.form.get("current_password", "").strip()
+    new_password = request.form.get("new_password", "").strip()
+    new_password_confirm = request.form.get("new_password_confirm", "").strip()
+
+    if not current_password or not new_password or not new_password_confirm:
+        return redirect(url_for("auth.mypage", error="missing_fields"))
+
+    # 비밀번호 확인 일치 검증
+    if new_password != new_password_confirm:
+        return redirect(url_for("auth.mypage", error="password_mismatch"))
+
+    # 기존 비밀번호와 새 비밀번호 동일 여부 검증
+    if current_password == new_password:
+        return redirect(url_for("auth.mypage", error="password_same_as_current"))
+
+    # Day 4 회원가입 때와 동일한 새 비밀번호 복잡도 검증 (8자 이상, 대문자 포함, 특수문자 포함)
+    is_valid_pw, pw_err_code = validate_password_complexity(new_password)
+    if not is_valid_pw:
+        return redirect(url_for("auth.mypage", error=pw_err_code))
+
+    supabase = get_supabase_client()
+    admin_client = get_supabase_admin_client()
+    if not supabase and not admin_client:
+        return redirect(url_for("auth.mypage", error="auth_error"))
+
+    # 1. 기존 비밀번호 검증 (재로그인 방식으로 인증)
+    try:
+        verify_client = supabase or admin_client
+        verify_res = verify_client.auth.sign_in_with_password({
+            "email": user_email,
+            "password": current_password
+        })
+        if not verify_res or not verify_res.user:
+            return redirect(url_for("auth.mypage", error="current_password_incorrect"))
+    except Exception as e:
+        logger.warning(f"[비밀번호 변경 - 현재 비밀번호 확인 실패] {e}")
+        return redirect(url_for("auth.mypage", error="current_password_incorrect"))
+
+    # 2. Supabase update_user_by_id()를 사용한 비밀번호 변경
+    updated = False
+    if admin_client:
+        try:
+            admin_client.auth.admin.update_user_by_id(
+                user_id,
+                {"password": new_password}
+            )
+            updated = True
+        except Exception as e:
+            logger.error(f"[update_user_by_id 비밀번호 변경 실패] {e}", exc_info=True)
+
+    if not updated and supabase:
+        try:
+            access_token = getattr(verify_res.session, "access_token", None) or session.get("access_token")
+            if access_token:
+                supabase.auth._request(
+                    "PUT",
+                    "user",
+                    jwt=access_token,
+                    body={"password": new_password}
+                )
+                updated = True
+        except Exception as e:
+            logger.error(f"[access_token 비밀번호 변경 실패] {e}", exc_info=True)
+
+    if updated:
+        return redirect(url_for("auth.mypage", msg="password_updated"))
+    else:
+        return redirect(url_for("auth.mypage", error="reset_failed"))
 
 
 @auth_bp.route("/delete-account", methods=["POST"])

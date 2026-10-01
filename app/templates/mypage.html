@@ -124,64 +124,69 @@
                             </div>
                         </div>
 
-                        <!-- 추가 보안 관리 (아코디언): 이메일/비밀번호 변경 -->
+                        <!-- 비밀번호 변경 섹션 (이메일 가입자에게만 표시) -->
+                        {% if is_email_user %}
+                        <div class="card border rounded-4 mb-4">
+                            <div class="card-body p-4">
+                                <h6 class="fw-bold mb-3">
+                                    <i class="bi bi-key me-1 text-primary"></i>비밀번호 변경
+                                </h6>
+                                <form method="POST" action="{{ url_for('auth.change_password') }}" id="formChangePassword">
+                                    <div class="mb-3">
+                                        <label for="currentPassword" class="form-label small fw-semibold">기존 비밀번호 <span class="text-danger">*</span></label>
+                                        <input type="password" class="form-control" id="currentPassword" name="current_password" placeholder="현재 비밀번호를 입력하세요" required>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="newPassword" class="form-label small fw-semibold">새 비밀번호 <span class="text-danger">*</span></label>
+                                        <input type="password" class="form-control" id="newPassword" name="new_password" placeholder="영문 대문자, 특수문자 포함 8자 이상" minlength="8" required>
+                                        <div class="mt-2 p-2 bg-light rounded-2 border">
+                                            <div class="small fw-semibold text-muted mb-1">비밀번호 충족 조건:</div>
+                                            <ul class="list-unstyled mb-0 small">
+                                                <li id="mypage-rule-len" class="text-danger"><i class="bi bi-x-circle me-1"></i>최소 8자 이상</li>
+                                                <li id="mypage-rule-upper" class="text-danger"><i class="bi bi-x-circle me-1"></i>영문 대문자 1개 이상 포함</li>
+                                                <li id="mypage-rule-special" class="text-danger"><i class="bi bi-x-circle me-1"></i>특수문자(!@#$%^&* 등) 1개 이상 포함</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="newPasswordConfirm" class="form-label small fw-semibold">새 비밀번호 확인 <span class="text-danger">*</span></label>
+                                        <input type="password" class="form-control" id="newPasswordConfirm" name="new_password_confirm" placeholder="새 비밀번호 재입력" minlength="8" required>
+                                        <div id="mypagePwMatchFeedback" class="form-text mt-1 small"></div>
+                                    </div>
+
+                                    <button type="submit" class="btn btn-outline-primary w-100 py-2 fw-semibold rounded-3" id="btnSubmitChangePassword">
+                                        <i class="bi bi-shield-check me-1"></i>비밀번호 변경하기
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <!-- 추가 보안 관리 (아코디언): 이메일 변경 -->
                         <div class="accordion mb-4" id="profileSecurityAccordion">
                             <div class="accordion-item border rounded-3 overflow-hidden">
                                 <h2 class="accordion-header" id="headingSecurity">
                                     <button class="accordion-button collapsed fw-semibold text-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSecurity" aria-expanded="false" aria-controls="collapseSecurity">
-                                        <i class="bi bi-shield-lock me-2 text-primary"></i>계정 보안 관리 (이메일 / 비밀번호 변경)
+                                        <i class="bi bi-envelope-gear me-2 text-primary"></i>이메일 주소 변경
                                     </button>
                                 </h2>
                                 <div id="collapseSecurity" class="accordion-collapse collapse" aria-labelledby="headingSecurity" data-bs-parent="#profileSecurityAccordion">
                                     <div class="accordion-body bg-light bg-opacity-50">
-                                        
-                                        <!-- 이메일 수정 폼 -->
-                                        <form method="POST" action="{{ url_for('auth.update_profile') }}" class="mb-4 pb-3 border-bottom">
+                                        <form method="POST" action="{{ url_for('auth.update_profile') }}">
                                             <input type="hidden" name="action" value="update_email">
                                             <div class="mb-2">
-                                                <label for="editEmail" class="form-label fw-semibold small">이메일 주소 변경</label>
+                                                <label for="editEmail" class="form-label fw-semibold small">새로운 이메일 주소</label>
                                                 <div class="input-group">
                                                     <input type="email" class="form-control" id="editEmail" name="email" placeholder="새로운 이메일 주소 입력" required>
                                                     <button type="submit" class="btn btn-warning px-3">인증 메일 전송</button>
                                                 </div>
-                                                <div class="form-text small text-danger">
-                                                    <i class="bi bi-info-circle me-1"></i>이메일 변경 시 입력하신 새 이메일 주소로 인증 메일이 발송되며, 메일함에서 인증을 완료해야 변경이 완료됩니다.
+                                                <div class="form-text small text-danger mt-2">
+                                                    <i class="bi bi-info-circle me-1"></i>이메일 변경 시 입력하신 새 이메일 주소로 인증 메일이 발송되며, 메일함에서 링크를 클릭하여 인증을 완료해야 변경이 완료됩니다.
                                                 </div>
                                             </div>
                                         </form>
-
-                                        <!-- 비밀번호 변경 폼 -->
-                                        <form method="POST" action="{{ url_for('auth.update_profile') }}">
-                                            <input type="hidden" name="action" value="update_password">
-                                            <div class="mb-3">
-                                                <label for="currentPassword" class="form-label fw-semibold small">현재 비밀번호 <span class="text-danger">*</span></label>
-                                                <input type="password" class="form-control" id="currentPassword" name="current_password" placeholder="현재 사용 중인 비밀번호" required>
-                                            </div>
-
-                                            <div class="mb-3">
-                                                <label for="newPassword" class="form-label fw-semibold small">새 비밀번호 <span class="text-danger">*</span></label>
-                                                <input type="password" class="form-control" id="newPassword" name="new_password" placeholder="영문 대문자, 특수문자 포함 8자 이상" minlength="8" required>
-                                                <div class="mt-2 p-2 bg-white rounded-2 border">
-                                                    <div class="small fw-semibold text-muted mb-1">비밀번호 충족 조건:</div>
-                                                    <ul class="list-unstyled mb-0 small">
-                                                        <li id="mypage-rule-len" class="text-danger"><i class="bi bi-x-circle me-1"></i>최소 8자 이상</li>
-                                                        <li id="mypage-rule-upper" class="text-danger"><i class="bi bi-x-circle me-1"></i>영문 대문자 1개 이상 포함</li>
-                                                        <li id="mypage-rule-special" class="text-danger"><i class="bi bi-x-circle me-1"></i>특수문자(!@#$%^&* 등) 1개 이상 포함</li>
-                                                    </ul>
-                                                </div>
-                                            </div>
-
-                                            <div class="mb-3">
-                                                <label for="newPasswordConfirm" class="form-label fw-semibold small">새 비밀번호 확인 <span class="text-danger">*</span></label>
-                                                <input type="password" class="form-control" id="newPasswordConfirm" name="new_password_confirm" placeholder="새 비밀번호 재입력" minlength="8" required>
-                                                <div id="mypagePwMatchFeedback" class="form-text mt-1 small"></div>
-                                            </div>
-
-                                            <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold rounded-3">
-                                                비밀번호 변경하기
-                                            </button>
-                                        </form>
-
                                     </div>
                                 </div>
                             </div>
