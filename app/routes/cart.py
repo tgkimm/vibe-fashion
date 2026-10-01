@@ -35,6 +35,8 @@ def add_to_cart():
     """
     data = request.get_json(silent=True) or request.form
     product_id = data.get("product_id")
+    color = data.get("color")
+    size = data.get("size")
     try:
         quantity = int(data.get("quantity", 1))
         if quantity < 1:
@@ -72,14 +74,20 @@ def add_to_cart():
         primary_image = next((img for img in images if img.get("is_primary")), None)
         thumbnail_url = primary_image.get("image_url") if primary_image else (images[0].get("image_url") if images else "https://picsum.photos/600/800")
 
+        # 장바구니 키: 옵션(색상, 사이즈)이 있는 경우 옵션별 고유 키 생성
+        cart_key = f"{product_id}_{color}_{size}" if (color or size) else str(product_id)
+
         # 세션 카트 갱신
         cart = session.get("cart", {})
-        if product_id in cart:
-            cart[product_id]["quantity"] += quantity
+        if cart_key in cart:
+            cart[cart_key]["quantity"] += quantity
         else:
-            cart[product_id] = {
+            cart[cart_key] = {
+                "key": cart_key,
                 "product_id": product_id,
                 "name": product.get("name"),
+                "color": color,
+                "size": size,
                 "price": unit_price,
                 "thumbnail_url": thumbnail_url,
                 "quantity": quantity
@@ -91,12 +99,13 @@ def add_to_cart():
         total_count = sum(item["quantity"] for item in cart.values())
         total_amount = sum(item["price"] * item["quantity"] for item in cart.values())
 
+        opt_desc = f" ({color}/{size})" if (color and size) else ""
         return jsonify({
             "success": True,
-            "message": f"'{product.get('name')}' 상품이 장바구니에 담겼습니다.",
+            "message": f"'{product.get('name')}{opt_desc}' 상품이 장바구니에 담겼습니다.",
             "cart_count": total_count,
             "total_amount": total_amount,
-            "item": cart[product_id]
+            "item": cart[cart_key]
         })
     except Exception as e:
         logger.error(f"[장바구니 추가 오류] 예외 발생: {e}", exc_info=True)
@@ -109,18 +118,18 @@ def update_quantity():
     장바구니 품목 수량 변경
     """
     data = request.get_json(silent=True) or request.form
-    product_id = data.get("product_id")
+    item_key = data.get("item_key") or data.get("product_id")
     try:
         quantity = int(data.get("quantity", 1))
     except (ValueError, TypeError):
         quantity = 1
 
     cart = session.get("cart", {})
-    if product_id in cart:
+    if item_key in cart:
         if quantity <= 0:
-            del cart[product_id]
+            del cart[item_key]
         else:
-            cart[product_id]["quantity"] = quantity
+            cart[item_key]["quantity"] = quantity
 
         session["cart"] = cart
         session.modified = True
@@ -141,11 +150,11 @@ def remove_from_cart():
     장바구니 품목 삭제
     """
     data = request.get_json(silent=True) or request.form
-    product_id = data.get("product_id")
+    item_key = data.get("item_key") or data.get("product_id")
 
     cart = session.get("cart", {})
-    if product_id in cart:
-        del cart[product_id]
+    if item_key in cart:
+        del cart[item_key]
         session["cart"] = cart
         session.modified = True
 

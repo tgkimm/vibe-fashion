@@ -69,6 +69,13 @@
                             <img src="{{ item.thumbnail_url }}" alt="{{ item.name }}" class="rounded-2 object-fit-cover" style="width: 50px; height: 50px;" onerror="this.onerror=null; this.src='https://picsum.photos/600/800';">
                             <div class="flex-grow-1">
                                 <div class="fw-semibold small text-truncate" style="max-width: 180px;">{{ item.name }}</div>
+                                {% if item.color or item.size %}
+                                <div class="text-secondary small" style="font-size: 0.75rem;">
+                                    {% if item.color %}색상: {{ item.color }}{% endif %}
+                                    {% if item.color and item.size %} / {% endif %}
+                                    {% if item.size %}사이즈: {{ item.size }}{% endif %}
+                                </div>
+                                {% endif %}
                                 <div class="text-muted small">{{ "{:,}".format(item.price) }}원 × {{ item.quantity }}개</div>
                             </div>
                             <div class="fw-bold small text-primary">

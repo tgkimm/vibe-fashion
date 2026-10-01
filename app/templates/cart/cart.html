@@ -31,12 +31,28 @@
                         </thead>
                         <tbody>
                             {% for item in items %}
-                            <tr id="cart-row-{{ item.product_id }}">
+                            {% set item_identifier = item.key or item.product_id %}
+                            <tr id="cart-row-{{ item_identifier }}">
                                 <td>
                                     <div class="d-flex align-items-center gap-3">
-                                        <img src="{{ item.thumbnail_url }}" alt="{{ item.name }}" class="rounded-3 object-fit-cover" style="width: 70px; height: 70px;" onerror="this.onerror=null; this.src='https://picsum.photos/600/800';">
+                                        <a href="{{ url_for('main.product_detail', product_id=item.product_id) }}">
+                                            <img src="{{ item.thumbnail_url }}" alt="{{ item.name }}" class="rounded-3 object-fit-cover" style="width: 70px; height: 70px;" onerror="this.onerror=null; this.src='https://picsum.photos/600/800';">
+                                        </a>
                                         <div>
-                                            <h6 class="mb-0 fw-bold">{{ item.name }}</h6>
+                                            <h6 class="mb-1 fw-bold">
+                                                <a href="{{ url_for('main.product_detail', product_id=item.product_id) }}" class="text-dark text-decoration-none">
+                                                    {{ item.name }}
+                                                </a>
+                                            </h6>
+                                            {% if item.color or item.size %}
+                                            <div class="small text-muted">
+                                                <span class="badge bg-light text-secondary border">
+                                                    {% if item.color %}색상: {{ item.color }}{% endif %}
+                                                    {% if item.color and item.size %} / {% endif %}
+                                                    {% if item.size %}사이즈: {{ item.size }}{% endif %}
+                                                </span>
+                                            </div>
+                                            {% endif %}
                                         </div>
                                     </div>
                                 </td>
@@ -45,16 +61,16 @@
                                 </td>
                                 <td>
                                     <div class="input-group input-group-sm justify-content-center mx-auto" style="max-width: 110px;">
-                                        <button class="btn btn-outline-secondary btn-decrease" data-product-id="{{ item.product_id }}" type="button">-</button>
-                                        <input type="number" class="form-control text-center quantity-input" value="{{ item.quantity }}" min="1" max="99" data-product-id="{{ item.product_id }}" data-price="{{ item.price }}">
-                                        <button class="btn btn-outline-secondary btn-increase" data-product-id="{{ item.product_id }}" type="button">+</button>
+                                        <button class="btn btn-outline-secondary btn-decrease" data-item-key="{{ item_identifier }}" type="button">-</button>
+                                        <input type="number" class="form-control text-center quantity-input" value="{{ item.quantity }}" min="1" max="99" data-item-key="{{ item_identifier }}" data-price="{{ item.price }}">
+                                        <button class="btn btn-outline-secondary btn-increase" data-item-key="{{ item_identifier }}" type="button">+</button>
                                     </div>
                                 </td>
-                                <td class="text-end fw-bold text-primary item-total-price" id="item-total-{{ item.product_id }}">
+                                <td class="text-end fw-bold text-primary item-total-price" id="item-total-{{ item_identifier }}">
                                     {{ "{:,}".format(item.price * item.quantity) }}원
                                 </td>
                                 <td class="text-center">
-                                    <button class="btn btn-sm btn-link text-danger p-0 btn-remove" data-product-id="{{ item.product_id }}" title="품목 삭제">
+                                    <button class="btn btn-sm btn-link text-danger p-0 btn-remove" data-item-key="{{ item_identifier }}" title="품목 삭제">
                                         <i class="bi bi-trash3 fs-5"></i>
                                     </button>
                                 </td>
@@ -109,11 +125,11 @@
 <script>
 document.addEventListener("DOMContentLoaded", () => {
     // 수량 변경 함수
-    function updateItem(productId, quantity) {
+    function updateItem(itemKey, quantity) {
         fetch("{{ url_for('cart.update_quantity') }}", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ product_id: productId, quantity: quantity })
+            body: JSON.stringify({ item_key: itemKey, quantity: quantity })
         })
         .then(res => res.json())
         .then(data => {
@@ -126,25 +142,25 @@ document.addEventListener("DOMContentLoaded", () => {
     // 증가 버튼
     document.querySelectorAll(".btn-increase").forEach(btn => {
         btn.addEventListener("click", () => {
-            const pid = btn.dataset.productId;
-            const input = document.querySelector(`.quantity-input[data-product-id="${pid}"]`);
+            const key = btn.dataset.itemKey;
+            const input = document.querySelector(`.quantity-input[data-item-key="${key}"]`);
             let val = parseInt(input.value) || 1;
             val += 1;
             input.value = val;
-            updateItem(pid, val);
+            updateItem(key, val);
         });
     });
 
     // 감소 버튼
     document.querySelectorAll(".btn-decrease").forEach(btn => {
         btn.addEventListener("click", () => {
-            const pid = btn.dataset.productId;
-            const input = document.querySelector(`.quantity-input[data-product-id="${pid}"]`);
+            const key = btn.dataset.itemKey;
+            const input = document.querySelector(`.quantity-input[data-item-key="${key}"]`);
             let val = parseInt(input.value) || 1;
             if (val > 1) {
                 val -= 1;
                 input.value = val;
-                updateItem(pid, val);
+                updateItem(key, val);
             }
         });
     });
@@ -152,11 +168,11 @@ document.addEventListener("DOMContentLoaded", () => {
     // 입력 필드 직접 변경
     document.querySelectorAll(".quantity-input").forEach(input => {
         input.addEventListener("change", () => {
-            const pid = input.dataset.productId;
+            const key = input.dataset.itemKey;
             let val = parseInt(input.value) || 1;
             if (val < 1) val = 1;
             input.value = val;
-            updateItem(pid, val);
+            updateItem(key, val);
         });
     });
 
@@ -164,11 +180,11 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll(".btn-remove").forEach(btn => {
         btn.addEventListener("click", () => {
             if (!confirm("이 상품을 장바구니에서 삭제하시겠습니까?")) return;
-            const pid = btn.dataset.productId;
+            const key = btn.dataset.itemKey;
             fetch("{{ url_for('cart.remove_from_cart') }}", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ product_id: pid })
+                body: JSON.stringify({ item_key: key })
             })
             .then(res => res.json())
             .then(data => {
