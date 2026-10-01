@@ -162,14 +162,16 @@
 </div>
 
 <script>
-document.addEventListener("DOMContentLoaded", () => {
-    let deleteConfirmModal;
-    let pendingCartId = null;
+// ✅ 전역 변수 선언
+let deleteConfirmModal = null;
+let pendingCartId = null;
 
+document.addEventListener("DOMContentLoaded", () => {
     // 모달 초기화
     const modalElement = document.getElementById("deleteConfirmModal");
     if (modalElement) {
         deleteConfirmModal = new bootstrap.Modal(modalElement);
+        console.log("[초기화] 모달 초기화 완료");
     }
 
     // 초기 요약 업데이트 (페이지 로드 시)
@@ -296,26 +298,53 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    // 삭제 버튼 클릭 (이벤트 위임)
-    document.addEventListener("click", (e) => {
-        // 삭제 버튼 (.btn-remove)이 클릭된 경우
-        if (e.target.closest(".btn-remove")) {
-            const btn = e.target.closest(".btn-remove");
-            pendingCartId = btn.dataset.cartId;
+    // 삭제 버튼 클릭 - 직접 등록
+    const deleteButtons = document.querySelectorAll(".btn-remove");
+    console.log(`[초기화] 삭제 버튼 개수: ${deleteButtons.length}개`);
+    
+    deleteButtons.forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const cartId = btn.dataset.cartId;
             const productName = btn.dataset.productName || "이 상품";
-            console.log(`[삭제 모달] 열기: cartId=${pendingCartId}, productName=${productName}`);
-            document.getElementById("deleteProductName").textContent = productName;
-            deleteConfirmModal?.show();
-        }
+            
+            console.log(`[삭제 버튼] 클릭됨: cartId=${cartId}, productName=${productName}`);
+            console.log(`[삭제 버튼] dataset:`, btn.dataset);
+            
+            // 전역 변수에 저장
+            pendingCartId = cartId;
+            console.log(`[삭제 버튼] pendingCartId 설정: ${pendingCartId}`);
+            
+            // 모달에 상품명 설정
+            const nameSpan = document.getElementById("deleteProductName");
+            if (nameSpan) {
+                nameSpan.textContent = productName;
+                console.log(`[삭제 버튼] 상품명 설정: ${productName}`);
+            }
+            
+            // 모달 표시
+            if (deleteConfirmModal) {
+                deleteConfirmModal.show();
+                console.log(`[삭제 버튼] 모달 표시`);
+            } else {
+                console.error("[삭제 버튼] deleteConfirmModal이 초기화되지 않음");
+            }
+        });
     });
 
     // 삭제 확인 버튼 - 직접 이벤트 리스너 등록
     const confirmDeleteBtn = document.getElementById("confirmDeleteBtn");
+    console.log(`[초기화] confirmDeleteBtn 찾음: ${confirmDeleteBtn ? '예' : '아니오'}`);
+    
     if (confirmDeleteBtn) {
         confirmDeleteBtn.addEventListener("click", (e) => {
             e.preventDefault();
             e.stopPropagation();
-            console.log(`[삭제 확인] 버튼 클릭됨: pendingCartId=${pendingCartId}`);
+            
+            console.log(`[삭제 확인] 버튼 클릭됨`);
+            console.log(`[삭제 확인] 현재 pendingCartId: ${pendingCartId}`);
             
             if (!pendingCartId) {
                 console.error("[삭제 확인] pendingCartId가 설정되지 않음");
