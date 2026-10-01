@@ -296,27 +296,34 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    // 삭제 버튼 클릭
-    document.querySelectorAll(".btn-remove").forEach(btn => {
-        btn.addEventListener("click", () => {
+    // 삭제 버튼 클릭 (이벤트 위임)
+    document.addEventListener("click", (e) => {
+        // 삭제 버튼 (.btn-remove)이 클릭된 경우
+        if (e.target.closest(".btn-remove")) {
+            const btn = e.target.closest(".btn-remove");
             pendingCartId = btn.dataset.cartId;
             const productName = btn.dataset.productName || "이 상품";
+            console.log(`[삭제 모달] 열기: cartId=${pendingCartId}, productName=${productName}`);
             document.getElementById("deleteProductName").textContent = productName;
             deleteConfirmModal?.show();
-        });
+        }
     });
 
-    // 삭제 확인 버튼
-    const confirmDeleteBtn = document.getElementById("confirmDeleteBtn");
-    if (confirmDeleteBtn) {
-        confirmDeleteBtn.addEventListener("click", () => {
+    // 삭제 확인 버튼 (이벤트 위임)
+    document.addEventListener("click", (e) => {
+        // 확인 버튼 (#confirmDeleteBtn)이 클릭된 경우
+        if (e.target.closest("#confirmDeleteBtn")) {
+            console.log(`[삭제 확인] 버튼 클릭됨`);
+            
             if (!pendingCartId) {
-                console.error("[삭제] pendingCartId가 설정되지 않음");
+                console.error("[삭제 확인] pendingCartId가 설정되지 않음");
                 return;
             }
 
             const cartId = pendingCartId;
-            console.log(`[삭제] DELETE 요청 시작: cartId=${cartId}`);
+            console.log(`[삭제 확인] DELETE 요청 시작: cartId=${cartId}`);
+            
+            // 모달 닫기
             deleteConfirmModal?.hide();
 
             // DELETE /cart/<cart_id> 요청
@@ -389,8 +396,8 @@ document.addEventListener("DOMContentLoaded", () => {
             });
 
             pendingCartId = null;
-        });
-    }
+        }
+    });
 });
 </script>
 {% endblock %}
