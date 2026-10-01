@@ -229,8 +229,8 @@ def get_product_sizes(product_id: str):
     상품 옵션별 사이즈/재고 조회 API:
     GET /api/products/<product_id>/sizes?color=<선택한 색상>
     - product_options에서 product_id + color로 필터링
-    - size, stock을 JSON 배열로 반환
-      예: [{"size": "S", "stock": 3}, {"size": "M", "stock": 0}]
+    - id, size, stock을 JSON 배열로 반환
+      예: [{"id": 123, "size": "S", "stock": 3}, {"id": 124, "size": "M", "stock": 0}]
     """
     color = request.args.get("color", "").strip()
     if not color:
@@ -244,7 +244,7 @@ def get_product_sizes(product_id: str):
         # product_options에서 product_id + color로 필터링
         res = (
             supabase.table("product_options")
-            .select("size, stock")
+            .select("id, size, stock")
             .eq("product_id", product_id)
             .eq("color", color)
             .not_.is_("size", "null")
@@ -263,6 +263,7 @@ def get_product_sizes(product_id: str):
 
         result = [
             {
+                "id": row.get("id"),
                 "size": row.get("size"),
                 "stock": int(row.get("stock", 0))
             }

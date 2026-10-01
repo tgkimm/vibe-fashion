@@ -172,6 +172,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const unitPrice = {{ product.unit_price }};
     let currentSelectedStock = 0;
+    let currentSelectedOptionId = null;  // 선택된 option_id 저장
 
     // 총 금액 계산 및 표시
     function updateTotalPrice() {
@@ -203,12 +204,14 @@ document.addEventListener("DOMContentLoaded", () => {
     function applySelectedSize(selectedOption) {
         if (!selectedOption || !selectedOption.value) {
             currentSelectedStock = 0;
+            currentSelectedOptionId = null;
             stockBadge.textContent = "";
             return;
         }
 
         const stock = parseInt(selectedOption.dataset.stock) || 0;
         currentSelectedStock = stock;
+        currentSelectedOptionId = selectedOption.dataset.optionId;  // option_id 저장
 
         if (stock <= 0) {
             stockBadge.textContent = "선택하신 옵션은 품절되었습니다.";
@@ -253,11 +256,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 let firstInStockIndex = -1;
 
-                // size, stock 목록 순회하며 옵션 생성
+                // size, stock, option_id 목록 순회하며 옵션 생성
                 data.forEach((item, idx) => {
                     const opt = document.createElement("option");
                     opt.value = item.size;
                     opt.dataset.stock = item.stock;
+                    opt.dataset.optionId = item.id;  // option_id 저장
 
                     if (item.stock === 0) {
                         opt.textContent = `${item.size} (품절)`;
@@ -350,8 +354,6 @@ document.addEventListener("DOMContentLoaded", () => {
     btnAddToCart.addEventListener("click", () => {
         if (!validateOptionSelection()) return;
 
-        const color = colorSelect ? colorSelect.value : "";
-        const size = sizeSelect.value;
         const qty = parseInt(quantityInput.value) || 1;
 
         btnAddToCart.disabled = true;
@@ -360,26 +362,18 @@ document.addEventListener("DOMContentLoaded", () => {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                product_id: productId,
-                quantity: qty,
-                color: color,
-                size: size
+                product_option_id: currentSelectedOptionId,  // option_id 직접 전송
+                quantity: qty
             })
         })
         .then(res => res.json())
         .then(data => {
             btnAddToCart.disabled = false;
             if (data.success) {
-                // 상단 네비게이션 뱃지 수량 동기화
-                const navBadge = document.getElementById("nav-cart-badge");
-                if (navBadge && data.cart_count !== undefined) {
-                    navBadge.textContent = data.cart_count;
-                }
-
                 // 토스트 알림 띄우기
                 const toastEl = document.getElementById("cartToast");
                 const toastMsg = document.getElementById("cartToastMessage");
-                if (toastMsg) toastMsg.textContent = `'${color} / ${size}' 상품 (${qty}개)을 장바구니에 담았습니다!`;
+                if (toastMsg) toastMsg.textContent = `상품 (${qty}개)을 장바구니에 담았습니다!`;
                 if (toastEl && window.bootstrap) {
                     const toast = new bootstrap.Toast(toastEl);
                     toast.show();

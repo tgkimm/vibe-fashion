@@ -19,12 +19,16 @@ def view_cart():
     # 1. 로그인 확인
     user = session.get("user")
     if not user or not user.get("id"):
+        logger.info("[장바구니 조회] 미로그인 상태, 로그인 페이지로 리다이렉트")
         return redirect(url_for("auth.login", next=url_for("cart.view_cart")))
 
     user_id = user["id"]
+    logger.info(f"[장바구니 조회] user_id={user_id}")
+
     supabase = get_supabase_client()
 
     if not supabase:
+        logger.error("[장바구니 조회] Supabase 연결 실패")
         flash("데이터베이스 연결에 실패했습니다.", "error")
         return redirect(url_for("main.index"))
 
@@ -38,7 +42,24 @@ def view_cart():
             .execute()
         )
 
+        logger.info(f"[장바구니 조회] DB 결과: {len(cart_res.data or [])}개 아이템")
+
         if not cart_res.data:
+            logger.info(f"[장바구니 조회] DB 장바구니 비어있음, 세션 확인")
+            # DB에 없으면 세션에서 폴백 (과도기 처리)
+            session_cart = session.get("cart", {})
+            if session_cart:
+                logger.info(f"[장바구니 조회] 세션에서 {len(session_cart)}개 아이템 발견")
+                items = list(session_cart.values())
+                total_amount = sum(item["price"] * item["quantity"] for item in items)
+                total_count = sum(item["quantity"] for item in items)
+                return render_template(
+                    "cart/cart.html",
+                    items=items,
+                    total_amount=total_amount,
+                    total_count=total_count
+                )
+            
             return render_template(
                 "cart/cart.html",
                 items=[],
@@ -68,7 +89,7 @@ def view_cart():
                 )
 
                 if not prod_res.data:
-                    logger.warning(f"[장바구니] 상품 조회 실패: {product_id}")
+                    logger.warning(f"[장바구니] 상품 조회 실패: product_id={product_id}")
                     continue
 
                 product = prod_res.data
@@ -121,9 +142,10 @@ def view_cart():
                 total_count += quantity
 
             except Exception as e:
-                logger.warning(f"[장바구니 항목 처리 오류] cart_item={cart_item}, error={e}")
+                logger.warning(f"[장바구니 항목 처리 오류] cart_item={cart_item}, error={e}", exc_info=True)
                 continue
 
+        logger.info(f"[장바구니 조회 완료] 최종 {len(items)}개 아이템, 총액={total_amount}")
         return render_template(
             "cart/cart.html",
             items=items,
@@ -150,13 +172,16 @@ def add_to_cart():
     6. 성공 시 JSON: {"success": True, "message": "장바구니에 담겼습니다"}
     """
     data = request.get_json(silent=True) or request.form
+    logger.info(f"[장바구니 추가] 요청 데이터: {data}")
 
     # 1. 로그인 확인: 미로그인 시 /auth/login 으로 리다이렉트
     user = session.get("user")
     if not user or not user.get("id"):
+        logger.warning("[장바구니 추가] 미로그인 상태")
         return redirect(url_for("auth.login", next=request.referrer or url_for("cart.view_cart")))
 
     user_id = user["id"]
+    logger.info(f"[장바구니 추가] user_id={user_id}")
 
     # 2. 파라미터 파싱 (product_option_id)
     product_option_id = data.get("product_option_id")
@@ -172,30 +197,40 @@ def add_to_cart():
     admin_supabase = get_supabase_admin_client() or supabase
 
     if not supabase:
+        logger.error("[장바구니 추가] Supabase 연결 실패")
         return jsonify({"success": False, "message": "데이터베이스 연결에 실패했습니다."}), 500
 
     try:
         # 하위 호환성: 만약 product_option_id 대신 product_id, color, size가 전달된 경우 매핑
         if not product_option_id:
             product_id = data.get("product_id")
-            color = data.get("color")
-            size = data.get("size")
-            if product_id and (color or size):
-                opt_query = supabase.table("product_options").select("id").eq("product_id", product_id)
+            color = data.get("color") or ""
+            size = data.get("size") or ""
+            logger.info(f"[장바구니 추가] product_id={product_id}, color={color}, size={size} (옵션 검색 중)")
+            
+            if product_id:
+                opt_query = supabase.table("product_options").select("id, color, size").eq("product_id", product_id)
                 if color:
                     opt_query = opt_query.eq("color", color)
                 if size:
                     opt_query = opt_query.eq("size", size)
                 opt_res = opt_query.limit(1).execute()
-                if opt_res.data and len(opt_res.data) > 0:
+                
+                logger.info(f"[장바구니 추가] 옵션 조회 결과: {len(opt_res.data or [])}개")
+                if opt_res.data:
+                    logger.info(f"[장바구니 추가] 찾은 옵션: {opt_res.data[0]}")
                     product_option_id = opt_res.data[0]["id"]
+                else:
+                    logger.warning(f"[장바구니 추가] 매칭하는 옵션을 찾을 수 없음 (color={color}, size={size})")
 
         if not product_option_id:
+            logger.error("[장바구니 추가] product_option_id 파싱 실패")
             return jsonify({"success": False, "message": "상품 옵션 ID가 전달되지 않았습니다."}), 400
 
         try:
             product_option_id = int(product_option_id)
         except (ValueError, TypeError):
+            logger.error(f"[장바구니 추가] product_option_id 타입 변환 실패: {product_option_id}")
             return jsonify({"success": False, "message": "유효하지 않은 상품 옵션 ID입니다."}), 400
 
         # 3. product_options.stock 조회
@@ -207,6 +242,7 @@ def add_to_cart():
         )
 
         if not opt_res.data or len(opt_res.data) == 0:
+            logger.error(f"[장바구니 추가] product_option 조회 실패: {product_option_id}")
             return jsonify({"success": False, "message": "존재하지 않는 상품 옵션입니다."}), 404
 
         option = opt_res.data[0]
@@ -218,6 +254,7 @@ def add_to_cart():
 
         # 4. 담기 전 요청 수량이 재고보다 많은 경우 에러 반환 (DB에 아무것도 쓰지 않음)
         if stock < quantity:
+            logger.warning(f"[장바구니 추가] 재고 부족: 요청={quantity}, 재고={stock}")
             return jsonify({
                 "success": False,
                 "message": f"재고가 부족합니다(현재 {stock}개)"
@@ -235,10 +272,12 @@ def add_to_cart():
         existing_qty = 0
         if cart_item_res.data and len(cart_item_res.data) > 0:
             existing_qty = int(cart_item_res.data[0].get("quantity") or 0)
+            logger.info(f"[장바구니 추가] 기존 수량: {existing_qty}")
 
         # 6. 누적 후 수량이 재고를 초과하게 되는 경우도 동일하게 에러 처리
         total_qty = existing_qty + quantity
         if total_qty > stock:
+            logger.warning(f"[장바구니 추가] 누적 후 재고 초과: {existing_qty} + {quantity} > {stock}")
             return jsonify({
                 "success": False,
                 "message": f"재고가 부족합니다(현재 {stock}개)"
@@ -252,11 +291,13 @@ def add_to_cart():
             "option_id": product_option_id,
             "quantity": total_qty
         }
+        logger.info(f"[장바구니 추가] DB upsert: {upsert_payload}")
 
         admin_supabase.table("carts").upsert(
             upsert_payload,
             on_conflict="user_id,product_id,option_id"
         ).execute()
+        logger.info(f"[장바구니 추가] DB upsert 완료")
 
         # 세션 동기화 (기존 세션 기반 뷰 호환용)
         try:
