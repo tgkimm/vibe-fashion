@@ -262,6 +262,119 @@ def get_cart_count():
     return jsonify({"cart_count": total_count})
 
 
+@cart_bp.route("/<int:cart_id>", methods=["PATCH"])
+def update_cart_quantity(cart_id):
+    """
+    장바구니 아이템 수량 변경 (DB 기반):
+    1. 로그인 확인
+    2. 본인 소유의 장바구니 아이템 확인
+    3. quantity >= 1 검증
+    4. 해당 옵션의 stock 재고 검증
+    5. 성공 시 UPDATE 후 subtotal(소계) 반환
+    """
+    # 1. 로그인 확인
+    user = session.get("user")
+    if not user or not user.get("id"):
+        return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
+
+    user_id = user["id"]
+
+    # 2. 요청 body 파싱
+    data = request.get_json(silent=True) or request.form
+    try:
+        quantity = int(data.get("quantity", 1))
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "message": "유효하지 않은 수량입니다."}), 400
+
+    # 3. quantity >= 1 검증
+    if quantity < 1:
+        return jsonify({"success": False, "message": "수량은 1개 이상이어야 합니다."}), 400
+
+    supabase = get_supabase_client()
+    admin_supabase = get_supabase_admin_client() or supabase
+
+    if not supabase:
+        return jsonify({"success": False, "message": "데이터베이스 연결에 실패했습니다."}), 500
+
+    try:
+        # 4. carts 테이블에서 해당 cart_id 조회
+        cart_res = (
+            admin_supabase.table("carts")
+            .select("id, user_id, product_id, option_id, quantity")
+            .eq("id", cart_id)
+            .execute()
+        )
+
+        if not cart_res.data or len(cart_res.data) == 0:
+            return jsonify({"success": False, "message": "존재하지 않는 장바구니 아이템입니다."}), 404
+
+        cart_item = cart_res.data[0]
+
+        # 5. 본인 소유 확인 (다른 사용자의 cart_id 접근 차단)
+        if str(cart_item["user_id"]) != str(user_id):
+            return jsonify({"success": False, "message": "접근 권한이 없습니다."}), 403
+
+        # 6. 해당 옵션의 stock 재고 검증
+        option_id = cart_item["option_id"]
+        opt_res = (
+            supabase.table("product_options")
+            .select("id, stock, stock_quantity, product_id, additional_price")
+            .eq("id", option_id)
+            .execute()
+        )
+
+        if not opt_res.data or len(opt_res.data) == 0:
+            return jsonify({"success": False, "message": "상품 옵션 정보를 찾을 수 없습니다."}), 404
+
+        option = opt_res.data[0]
+        stock = option.get("stock")
+        if stock is None:
+            stock = option.get("stock_quantity", 0)
+        stock = int(stock or 0)
+
+        # 7. 변경하려는 quantity가 재고를 초과하면 에러
+        if quantity > stock:
+            return jsonify({
+                "success": False,
+                "message": f"재고가 부족합니다(현재 {stock}개)"
+            }), 400
+
+        # 8. carts 테이블 UPDATE
+        admin_supabase.table("carts").update(
+            {"quantity": quantity}
+        ).eq("id", cart_id).execute()
+
+        # 9. 소계 계산을 위해 product 정보 조회
+        product_id = cart_item["product_id"]
+        prod_res = (
+            supabase.table("products")
+            .select("id, name, price, sale_price")
+            .eq("id", product_id)
+            .execute()
+        )
+
+        if not prod_res.data or len(prod_res.data) == 0:
+            logger.warning(f"[장바구니 수량 변경] 상품 조회 실패: {product_id}")
+            return jsonify({"success": False, "message": "상품 정보를 찾을 수 없습니다."}), 404
+
+        product = prod_res.data[0]
+        raw_price = product.get("sale_price") if product.get("sale_price") is not None else product.get("price", 0)
+        unit_price = int(float(raw_price or 0)) + int(float(option.get("additional_price") or 0))
+        subtotal = unit_price * quantity
+
+        # 10. 성공 시 새 소계 반환
+        return jsonify({
+            "success": True,
+            "message": f"수량이 {quantity}개로 변경되었습니다.",
+            "subtotal": subtotal,
+            "quantity": quantity
+        })
+
+    except Exception as e:
+        logger.error(f"[장바구니 수량 변경 오류] 예외 발생: {e}", exc_info=True)
+        return jsonify({"success": False, "message": "장바구니 수량 변경 중 오류가 발생했습니다."}), 500
+
+
 @cart_bp.route("/checkout", methods=["GET", "POST"])
 def checkout():
     """
