@@ -60,6 +60,14 @@
                             </h6>
                             <div class="row g-3">
                                 <div class="col-sm-6">
+                                    <div class="small text-muted mb-1">아이디 (고유번호)</div>
+                                    <div class="fw-semibold text-break font-monospace small text-dark">{{ user.id }}</div>
+                                </div>
+                                <div class="col-sm-6">
+                                    <div class="small text-muted mb-1">이메일</div>
+                                    <div class="fw-semibold">{{ profile.email or user.email }}</div>
+                                </div>
+                                <div class="col-sm-6">
                                     <div class="small text-muted mb-1">이름 (실명)</div>
                                     <div class="fw-semibold">{{ profile.real_name or user.real_name or user.name or '-' }}</div>
                                 </div>
@@ -67,11 +75,7 @@
                                     <div class="small text-muted mb-1">닉네임</div>
                                     <div class="fw-semibold">{{ profile.name or user.name or '-' }}</div>
                                 </div>
-                                <div class="col-sm-6">
-                                    <div class="small text-muted mb-1">이메일</div>
-                                    <div class="fw-semibold">{{ profile.email or user.email }}</div>
-                                </div>
-                                <div class="col-sm-6">
+                                <div class="col-12">
                                     <div class="small text-muted mb-1">기본 배송지</div>
                                     <div class="fw-semibold text-break">{{ profile.address or user.address or '등록된 기본 배송지가 없습니다.' }}</div>
                                 </div>
@@ -87,6 +91,24 @@
                                 <form method="POST" action="{{ url_for('auth.update_profile') }}" id="formUpdateProfileAll">
                                     <input type="hidden" name="action" value="update_profile_all">
                                     
+                                    <!-- 회원 아이디 (Supabase UID, 읽기 전용) -->
+                                    <div class="mb-3">
+                                        <label class="form-label small fw-semibold">아이디 (고유번호)</label>
+                                        <input type="text" class="form-control bg-light font-monospace small" value="{{ user.id }}" readonly tabindex="-1">
+                                        <div class="form-text small text-muted">시스템에서 부여된 고유 회원 아이디로 변경할 수 없습니다.</div>
+                                    </div>
+
+                                    <!-- 이메일 주소 (인증 시 상시 변경 가능) -->
+                                    <div class="mb-3">
+                                        <label for="editEmail" class="form-label small fw-semibold">
+                                            이메일 주소 <span class="text-danger">*</span>
+                                        </label>
+                                        <input type="email" class="form-control" id="editEmail" name="email" value="{{ profile.email or user.email }}" data-original-email="{{ profile.email or user.email }}" placeholder="이메일 주소를 입력하세요" required>
+                                        <div id="emailHelpText" class="form-text small text-muted">
+                                            <i class="bi bi-info-circle me-1"></i>이메일 주소를 변경하면 새 이메일로 인증 메일이 발송되며, 메일함에서 인증을 완료해야 변경이 완료됩니다.
+                                        </div>
+                                    </div>
+
                                     <!-- 이름 -->
                                     <div class="mb-3">
                                         <label for="editName" class="form-label small fw-semibold">이름 (실명)</label>
@@ -101,13 +123,6 @@
                                             <button class="btn btn-outline-secondary" type="button" id="btnCheckMypageNickname">중복 확인</button>
                                         </div>
                                         <div id="mypageNicknameFeedback" class="form-text small">다른 회원과 중복되지 않는 닉네임을 설정해 주세요.</div>
-                                    </div>
-
-                                    <!-- 이메일 (읽기 전용 표시) -->
-                                    <div class="mb-3">
-                                        <label class="form-label small fw-semibold">이메일 (계정 ID)</label>
-                                        <input type="email" class="form-control bg-light" value="{{ profile.email or user.email }}" readonly>
-                                        <div class="form-text small text-muted">이메일 주소 변경은 아래 보안 설정 메뉴를 이용해 주세요.</div>
                                     </div>
 
                                     <!-- 기본 배송지 -->
@@ -163,34 +178,6 @@
                             </div>
                         </div>
                         {% endif %}
-
-                        <!-- 추가 보안 관리 (아코디언): 이메일 변경 -->
-                        <div class="accordion mb-4" id="profileSecurityAccordion">
-                            <div class="accordion-item border rounded-3 overflow-hidden">
-                                <h2 class="accordion-header" id="headingSecurity">
-                                    <button class="accordion-button collapsed fw-semibold text-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSecurity" aria-expanded="false" aria-controls="collapseSecurity">
-                                        <i class="bi bi-envelope-gear me-2 text-primary"></i>이메일 주소 변경
-                                    </button>
-                                </h2>
-                                <div id="collapseSecurity" class="accordion-collapse collapse" aria-labelledby="headingSecurity" data-bs-parent="#profileSecurityAccordion">
-                                    <div class="accordion-body bg-light bg-opacity-50">
-                                        <form method="POST" action="{{ url_for('auth.update_profile') }}">
-                                            <input type="hidden" name="action" value="update_email">
-                                            <div class="mb-2">
-                                                <label for="editEmail" class="form-label fw-semibold small">새로운 이메일 주소</label>
-                                                <div class="input-group">
-                                                    <input type="email" class="form-control" id="editEmail" name="email" placeholder="새로운 이메일 주소 입력" required>
-                                                    <button type="submit" class="btn btn-warning px-3">인증 메일 전송</button>
-                                                </div>
-                                                <div class="form-text small text-danger mt-2">
-                                                    <i class="bi bi-info-circle me-1"></i>이메일 변경 시 입력하신 새 이메일 주소로 인증 메일이 발송되며, 메일함에서 링크를 클릭하여 인증을 완료해야 변경이 완료됩니다.
-                                                </div>
-                                            </div>
-                                        </form>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
                     </div>
 
                     <!-- 탭 2: 주문 내역 -->

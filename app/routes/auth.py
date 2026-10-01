@@ -125,6 +125,7 @@ def get_success_message(code: str) -> str:
         "nickname_updated": "닉네임이 성공적으로 변경되었습니다.",
         "address_updated": "기본 배송지가 성공적으로 저장되었습니다.",
         "profile_updated": "회원 정보가 성공적으로 변경되었습니다.",
+        "profile_updated_email_sent": "회원 정보가 저장되었으며, 새 이메일 주소로 인증 메일이 발송되었습니다. 메일함의 링크를 클릭하여 인증을 완료해 주세요.",
         "email_update_sent": "새 이메일 주소로 인증 메일이 발송되었습니다. 메일함의 링크를 클릭하여 인증을 완료해 주세요.",
         "password_updated": "비밀번호가 성공적으로 변경되었습니다.",
         "logged_out": "정상적으로 로그아웃되었습니다.",
@@ -1253,10 +1254,11 @@ def update_profile():
         session.modified = True
         return redirect(url_for("auth.mypage", msg="address_updated"))
 
-    # 5. 전체 프로필 일괄 수정 처리 (이름, 닉네임, 기본 배송지)
+    # 5. 전체 프로필 일괄 수정 처리 (이름, 닉네임, 이메일, 기본 배송지)
     elif action == "update_profile_all":
         new_name = request.form.get("name", "").strip()
         new_nickname = request.form.get("nickname", "").strip()
+        new_email = request.form.get("email", "").strip()
         new_address = request.form.get("address", "").strip()
 
         if not new_nickname or len(new_nickname) < 2:
@@ -1271,6 +1273,14 @@ def update_profile():
                     return redirect(url_for("auth.mypage", error="nickname_exists"))
         except Exception as e:
             logger.warning(f"[닉네임 중복 확인 예외] {e}")
+
+        # 이메일 유효성 검사 (입력된 경우)
+        email_changed = False
+        current_email = (user_info.get("email") or "").lower()
+        if new_email and new_email.lower() != current_email:
+            if "@" not in new_email or "." not in new_email:
+                return redirect(url_for("auth.mypage", error="invalid_email"))
+            email_changed = True
 
         # profiles 테이블 업데이트
         profile_update_data = {"name": new_nickname}
@@ -1309,6 +1319,36 @@ def update_profile():
             session["user"]["real_name"] = new_name
         session["user"]["address"] = new_address
         session.modified = True
+
+        # 이메일 변경 요청 처리 (재인증 메일 발송)
+        if email_changed:
+            site_url = get_site_url()
+            email_redirect_to = f"{site_url}/auth/confirm"
+            access_token = session.get("access_token")
+
+            try:
+                if access_token:
+                    supabase.auth._request(
+                        "PUT",
+                        "user",
+                        jwt=access_token,
+                        body={"email": new_email},
+                        options={"email_redirect_to": email_redirect_to}
+                    )
+                elif admin_client:
+                    admin_client.auth.admin.update_user_by_id(
+                        user_id,
+                        {"email": new_email}
+                    )
+                    admin_client.table("profiles").update({"email": new_email}).eq("id", user_id).execute()
+                return redirect(url_for("auth.mypage", msg="profile_updated_email_sent"))
+            except Exception as e:
+                logger.error(f"[내 정보 일괄 수정 중 이메일 변경 요청 실패] {e}", exc_info=True)
+                err_str = str(e).lower()
+                if "already registered" in err_str:
+                    return redirect(url_for("auth.mypage", error="user_already_exists"))
+                return redirect(url_for("auth.mypage", error="auth_error"))
+
         return redirect(url_for("auth.mypage", msg="profile_updated"))
 
     return redirect(url_for("auth.mypage"))
