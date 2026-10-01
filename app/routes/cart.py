@@ -422,21 +422,27 @@ def delete_cart_item(cart_id):
     3. carts 테이블에서 DELETE
     4. 성공 시 JSON: {"success": True, "message": "장바구니에서 삭제되었습니다."}
     """
+    logger.info(f"[장바구니 삭제] 삭제 요청 시작: cart_id={cart_id}")
+    
     # 1. 로그인 확인
     user = session.get("user")
     if not user or not user.get("id"):
+        logger.warning(f"[장바구니 삭제] 로그인 되지 않음")
         return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
 
     user_id = user["id"]
+    logger.info(f"[장바구니 삭제] user_id={user_id}")
 
     supabase = get_supabase_client()
     admin_supabase = get_supabase_admin_client() or supabase
 
     if not supabase:
+        logger.error(f"[장바구니 삭제] DB 연결 실패")
         return jsonify({"success": False, "message": "데이터베이스 연결에 실패했습니다."}), 500
 
     try:
         # 2. carts 테이블에서 해당 cart_id 조회
+        logger.info(f"[장바구니 삭제] carts 테이블 조회: cart_id={cart_id}")
         cart_res = (
             admin_supabase.table("carts")
             .select("id, user_id")
@@ -445,18 +451,24 @@ def delete_cart_item(cart_id):
         )
 
         if not cart_res.data or len(cart_res.data) == 0:
+            logger.warning(f"[장바구니 삭제] cart_id={cart_id} 존재하지 않음")
             return jsonify({"success": False, "message": "존재하지 않는 장바구니 아이템입니다."}), 404
 
         cart_item = cart_res.data[0]
+        logger.info(f"[장바구니 삭제] 조회된 cart_item: {cart_item}")
 
         # 3. 본인 소유 확인 (다른 사용자의 cart_id 접근 차단)
         if str(cart_item["user_id"]) != str(user_id):
+            logger.warning(f"[장바구니 삭제] 소유권 검증 실패: cart_user={cart_item['user_id']}, session_user={user_id}")
             return jsonify({"success": False, "message": "접근 권한이 없습니다."}), 403
 
         # 4. carts 테이블에서 DELETE
-        admin_supabase.table("carts").delete().eq("id", cart_id).execute()
+        logger.info(f"[장바구니 삭제] DELETE 실행: cart_id={cart_id}")
+        delete_res = admin_supabase.table("carts").delete().eq("id", cart_id).execute()
+        logger.info(f"[장바구니 삭제] DELETE 완료: {delete_res}")
 
         # 5. 성공 시 JSON 반환
+        logger.info(f"[장바구니 삭제] 성공: cart_id={cart_id}")
         return jsonify({
             "success": True,
             "message": "장바구니에서 삭제되었습니다."
