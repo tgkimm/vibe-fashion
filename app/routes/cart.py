@@ -1,11 +1,26 @@
 import logging
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, flash
-from app.utils import get_supabase_client, get_supabase_admin_client
+from app.utils import get_supabase_client
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
 
 cart_bp = Blueprint("cart", __name__, url_prefix="/cart")
+
+
+def _get_user_client():
+    """로그인 사용자의 JWT를 적용한 Supabase 클라이언트 (RLS의 auth.uid()가 본인으로 평가됨)."""
+    client = get_supabase_client()
+    token = session.get("access_token")
+    if client and token:
+        # postgrest 초기화 전에 지정해야 모든 요청에 사용자 JWT가 적용됨
+        client.options.headers["Authorization"] = f"Bearer {token}"
+    return client
+
+
+def _get_stock(option):
+    """stock / stock_quantity 두 컬럼이 혼재하므로 값이 채워진 쪽을 재고로 사용."""
+    return max(int(option.get("stock") or 0), int(option.get("stock_quantity") or 0))
 
 
 @cart_bp.route("/")
@@ -25,7 +40,7 @@ def view_cart():
     user_id = user["id"]
     logger.info(f"[장바구니 조회] user_id={user_id}")
 
-    supabase = get_supabase_client()
+    supabase = _get_user_client()
 
     if not supabase:
         logger.error("[장바구니 조회] Supabase 연결 실패")
@@ -43,24 +58,8 @@ def view_cart():
         )
 
         logger.info(f"[장바구니 조회] DB 결과: {len(cart_res.data or [])}개 아이템")
-        logger.info(f"[장바구니 조회] 실제 데이터: {cart_res.data}")
 
         if not cart_res.data:
-            logger.info(f"[장바구니 조회] DB 장바구니 비어있음, 세션 확인")
-            # DB에 없으면 세션에서 폴백 (과도기 처리)
-            session_cart = session.get("cart", {})
-            if session_cart:
-                logger.info(f"[장바구니 조회] 세션에서 {len(session_cart)}개 아이템 발견")
-                items = list(session_cart.values())
-                total_amount = sum(item["price"] * item["quantity"] for item in items)
-                total_count = sum(item["quantity"] for item in items)
-                return render_template(
-                    "cart/cart.html",
-                    items=items,
-                    total_amount=total_amount,
-                    total_count=total_count
-                )
-            
             return render_template(
                 "cart/cart.html",
                 items=[],
@@ -107,10 +106,7 @@ def view_cart():
                 option = opt_res.data if opt_res.data else {}
 
                 # 재고 확인 (stock 우선, 없으면 stock_quantity)
-                stock = option.get("stock")
-                if stock is None:
-                    stock = option.get("stock_quantity", 0)
-                stock = int(stock or 0)
+                stock = _get_stock(option)
                 is_out_of_stock = stock == 0
 
                 # 가격 계산
@@ -194,8 +190,7 @@ def add_to_cart():
     except (ValueError, TypeError):
         quantity = 1
 
-    supabase = get_supabase_client()
-    admin_supabase = get_supabase_admin_client() or supabase
+    supabase = _get_user_client()
 
     if not supabase:
         logger.error("[장바구니 추가] Supabase 연결 실패")
@@ -247,11 +242,7 @@ def add_to_cart():
             return jsonify({"success": False, "message": "존재하지 않는 상품 옵션입니다."}), 404
 
         option = opt_res.data[0]
-        # stock 컬럼 우선, 없을 경우 stock_quantity 사용
-        stock = option.get("stock")
-        if stock is None:
-            stock = option.get("stock_quantity", 0)
-        stock = int(stock or 0)
+        stock = _get_stock(option)
 
         # 4. 담기 전 요청 수량이 재고보다 많은 경우 에러 반환 (DB에 아무것도 쓰지 않음)
         if stock < quantity:
@@ -263,7 +254,7 @@ def add_to_cart():
 
         # 5. 기존 carts 테이블 조회 (같은 옵션이면 수량 누적 검사)
         cart_item_res = (
-            admin_supabase.table("carts")
+            supabase.table("carts")
             .select("id, quantity")
             .eq("user_id", user_id)
             .eq("option_id", product_option_id)
@@ -294,7 +285,7 @@ def add_to_cart():
         }
         logger.info(f"[장바구니 추가] DB upsert: {upsert_payload}")
 
-        admin_supabase.table("carts").upsert(
+        supabase.table("carts").upsert(
             upsert_payload,
             on_conflict="user_id,product_id,option_id"
         ).execute()
@@ -434,8 +425,7 @@ def delete_cart_item(cart_id):
     user_id = user["id"]
     logger.info(f"[장바구니 삭제] user_id={user_id}")
 
-    supabase = get_supabase_client()
-    admin_supabase = get_supabase_admin_client() or supabase
+    supabase = _get_user_client()
 
     if not supabase:
         logger.error(f"[장바구니 삭제] DB 연결 실패")
@@ -445,7 +435,7 @@ def delete_cart_item(cart_id):
         # 2. carts 테이블에서 해당 cart_id 조회
         logger.info(f"[장바구니 삭제] carts 테이블 조회: cart_id={cart_id}")
         cart_res = (
-            admin_supabase.table("carts")
+            supabase.table("carts")
             .select("id, user_id")
             .eq("id", cart_id)
             .execute()
@@ -465,7 +455,7 @@ def delete_cart_item(cart_id):
 
         # 4. carts 테이블에서 DELETE
         logger.info(f"[장바구니 삭제] DELETE 실행: cart_id={cart_id}")
-        delete_res = admin_supabase.table("carts").delete().eq("id", cart_id).execute()
+        delete_res = supabase.table("carts").delete().eq("id", cart_id).execute()
         logger.info(f"[장바구니 삭제] DELETE 완료: {delete_res}")
 
         # 5. 성공 시 JSON 반환
@@ -508,8 +498,7 @@ def update_cart_quantity(cart_id):
     if quantity < 1:
         return jsonify({"success": False, "message": "수량은 1개 이상이어야 합니다."}), 400
 
-    supabase = get_supabase_client()
-    admin_supabase = get_supabase_admin_client() or supabase
+    supabase = _get_user_client()
 
     if not supabase:
         return jsonify({"success": False, "message": "데이터베이스 연결에 실패했습니다."}), 500
@@ -517,7 +506,7 @@ def update_cart_quantity(cart_id):
     try:
         # 4. carts 테이블에서 해당 cart_id 조회
         cart_res = (
-            admin_supabase.table("carts")
+            supabase.table("carts")
             .select("id, user_id, product_id, option_id, quantity")
             .eq("id", cart_id)
             .execute()
@@ -545,10 +534,7 @@ def update_cart_quantity(cart_id):
             return jsonify({"success": False, "message": "상품 옵션 정보를 찾을 수 없습니다."}), 404
 
         option = opt_res.data[0]
-        stock = option.get("stock")
-        if stock is None:
-            stock = option.get("stock_quantity", 0)
-        stock = int(stock or 0)
+        stock = _get_stock(option)
 
         # 7. 변경하려는 quantity가 재고를 초과하면 에러
         if quantity > stock:
@@ -558,7 +544,7 @@ def update_cart_quantity(cart_id):
             }), 400
 
         # 8. carts 테이블 UPDATE
-        admin_supabase.table("carts").update(
+        supabase.table("carts").update(
             {"quantity": quantity}
         ).eq("id", cart_id).execute()
 
