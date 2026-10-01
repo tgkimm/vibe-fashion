@@ -1,6 +1,6 @@
 import logging
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, flash
-from app.utils import get_supabase_client
+from app.utils import get_supabase_client, get_supabase_admin_client
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
@@ -31,82 +31,166 @@ def view_cart():
 def add_to_cart():
     """
     장바구니 상품 추가 (AJAX / Form):
-    요청 바디에서 product_id와 quantity를 받아 세션 기반 장바구니에 추가합니다.
+    1. 요청 바디에서 product_option_id, quantity 수신
+       (기존 product_id, color, size 기반 호출도 하위 호환 지원)
+    2. 로그인 여부 확인: 미로그인 시 /auth/login 으로 리다이렉트
+    3. product_options.stock 조회하여 재고 부족 시 에러 반환 및 DB 쓰기 방지
+    4. carts 테이블에 upsert (같은 옵션이면 수량 누적)
+    5. 누적 후 수량이 재고를 초과하게 되는 경우도 에러 처리
+    6. 성공 시 JSON: {"success": True, "message": "장바구니에 담겼습니다"}
     """
     data = request.get_json(silent=True) or request.form
-    product_id = data.get("product_id")
-    color = data.get("color")
-    size = data.get("size")
+
+    # 1. 로그인 확인: 미로그인 시 /auth/login 으로 리다이렉트
+    user = session.get("user")
+    if not user or not user.get("id"):
+        return redirect(url_for("auth.login", next=request.referrer or url_for("cart.view_cart")))
+
+    user_id = user["id"]
+
+    # 2. 파라미터 파싱 (product_option_id)
+    product_option_id = data.get("product_option_id")
+    raw_qty = data.get("quantity", 1)
     try:
-        quantity = int(data.get("quantity", 1))
+        quantity = int(raw_qty)
         if quantity < 1:
             quantity = 1
     except (ValueError, TypeError):
         quantity = 1
 
-    if not product_id:
-        return jsonify({"success": False, "message": "상품 ID가 전달되지 않았습니다."}), 400
-
     supabase = get_supabase_client()
+    admin_supabase = get_supabase_admin_client() or supabase
+
     if not supabase:
         return jsonify({"success": False, "message": "데이터베이스 연결에 실패했습니다."}), 500
 
     try:
-        # 상품 정보 조회
-        res = (
-            supabase.table("products")
-            .select("id, name, description, price, sale_price, product_images(image_url, is_primary)")
-            .eq("id", product_id)
-            .eq("is_active", True)
-            .single()
+        # 하위 호환성: 만약 product_option_id 대신 product_id, color, size가 전달된 경우 매핑
+        if not product_option_id:
+            product_id = data.get("product_id")
+            color = data.get("color")
+            size = data.get("size")
+            if product_id and (color or size):
+                opt_query = supabase.table("product_options").select("id").eq("product_id", product_id)
+                if color:
+                    opt_query = opt_query.eq("color", color)
+                if size:
+                    opt_query = opt_query.eq("size", size)
+                opt_res = opt_query.limit(1).execute()
+                if opt_res.data and len(opt_res.data) > 0:
+                    product_option_id = opt_res.data[0]["id"]
+
+        if not product_option_id:
+            return jsonify({"success": False, "message": "상품 옵션 ID가 전달되지 않았습니다."}), 400
+
+        try:
+            product_option_id = int(product_option_id)
+        except (ValueError, TypeError):
+            return jsonify({"success": False, "message": "유효하지 않은 상품 옵션 ID입니다."}), 400
+
+        # 3. product_options.stock 조회
+        opt_res = (
+            supabase.table("product_options")
+            .select("id, product_id, stock, stock_quantity, color, size, additional_price")
+            .eq("id", product_option_id)
             .execute()
         )
 
-        product = res.data
-        if not product:
-            return jsonify({"success": False, "message": "존재하지 않거나 판매 중지된 상품입니다."}), 404
+        if not opt_res.data or len(opt_res.data) == 0:
+            return jsonify({"success": False, "message": "존재하지 않는 상품 옵션입니다."}), 404
 
-        # 가격 및 이미지 결정
-        raw_price = product.get("sale_price") if product.get("sale_price") is not None else product.get("price", 0)
-        unit_price = int(float(raw_price))
+        option = opt_res.data[0]
+        # stock 컬럼 우선, 없을 경우 stock_quantity 사용
+        stock = option.get("stock")
+        if stock is None:
+            stock = option.get("stock_quantity", 0)
+        stock = int(stock or 0)
 
-        images = product.get("product_images") or []
-        primary_image = next((img for img in images if img.get("is_primary")), None)
-        thumbnail_url = primary_image.get("image_url") if primary_image else (images[0].get("image_url") if images else "https://picsum.photos/600/800")
+        # 4. 담기 전 요청 수량이 재고보다 많은 경우 에러 반환 (DB에 아무것도 쓰지 않음)
+        if stock < quantity:
+            return jsonify({
+                "success": False,
+                "message": f"재고가 부족합니다(현재 {stock}개)"
+            }), 400
 
-        # 장바구니 키: 옵션(색상, 사이즈)이 있는 경우 옵션별 고유 키 생성
-        cart_key = f"{product_id}_{color}_{size}" if (color or size) else str(product_id)
+        # 5. 기존 carts 테이블 조회 (같은 옵션이면 수량 누적 검사)
+        cart_item_res = (
+            admin_supabase.table("carts")
+            .select("id, quantity")
+            .eq("user_id", user_id)
+            .eq("option_id", product_option_id)
+            .execute()
+        )
 
-        # 세션 카트 갱신
-        cart = session.get("cart", {})
-        if cart_key in cart:
-            cart[cart_key]["quantity"] += quantity
-        else:
+        existing_qty = 0
+        if cart_item_res.data and len(cart_item_res.data) > 0:
+            existing_qty = int(cart_item_res.data[0].get("quantity") or 0)
+
+        # 6. 누적 후 수량이 재고를 초과하게 되는 경우도 동일하게 에러 처리
+        total_qty = existing_qty + quantity
+        if total_qty > stock:
+            return jsonify({
+                "success": False,
+                "message": f"재고가 부족합니다(현재 {stock}개)"
+            }), 400
+
+        # 7. carts 테이블에 upsert
+        target_product_id = option.get("product_id")
+        upsert_payload = {
+            "user_id": user_id,
+            "product_id": target_product_id,
+            "option_id": product_option_id,
+            "quantity": total_qty
+        }
+
+        admin_supabase.table("carts").upsert(
+            upsert_payload,
+            on_conflict="user_id,product_id,option_id"
+        ).execute()
+
+        # 세션 동기화 (기존 세션 기반 뷰 호환용)
+        try:
+            prod_res = (
+                supabase.table("products")
+                .select("id, name, price, sale_price, product_images(image_url, is_primary)")
+                .eq("id", target_product_id)
+                .single()
+                .execute()
+            )
+            prod_data = prod_res.data or {}
+            raw_price = prod_data.get("sale_price") if prod_data.get("sale_price") is not None else prod_data.get("price", 0)
+            unit_price = int(float(raw_price or 0)) + int(float(option.get("additional_price") or 0))
+            images = prod_data.get("product_images") or []
+            primary_img = next((img for img in images if img.get("is_primary")), None)
+            thumb = primary_img.get("image_url") if primary_img else (images[0].get("image_url") if images else "https://picsum.photos/600/800")
+
+            color_val = option.get("color")
+            size_val = option.get("size")
+            cart_key = f"{target_product_id}_{color_val}_{size_val}" if (color_val or size_val) else str(product_option_id)
+
+            cart = session.get("cart", {})
             cart[cart_key] = {
                 "key": cart_key,
-                "product_id": product_id,
-                "name": product.get("name"),
-                "color": color,
-                "size": size,
+                "product_id": target_product_id,
+                "option_id": product_option_id,
+                "name": prod_data.get("name"),
+                "color": color_val,
+                "size": size_val,
                 "price": unit_price,
-                "thumbnail_url": thumbnail_url,
-                "quantity": quantity
+                "thumbnail_url": thumb,
+                "quantity": total_qty
             }
+            session["cart"] = cart
+            session.modified = True
+        except Exception as se:
+            logger.warning(f"[장바구니 세션 동기화 경고] {se}")
 
-        session["cart"] = cart
-        session.modified = True
-
-        total_count = sum(item["quantity"] for item in cart.values())
-        total_amount = sum(item["price"] * item["quantity"] for item in cart.values())
-
-        opt_desc = f" ({color}/{size})" if (color and size) else ""
+        # 8. 성공 시 JSON 반환
         return jsonify({
             "success": True,
-            "message": f"'{product.get('name')}{opt_desc}' 상품이 장바구니에 담겼습니다.",
-            "cart_count": total_count,
-            "total_amount": total_amount,
-            "item": cart[cart_key]
+            "message": "장바구니에 담겼습니다"
         })
+
     except Exception as e:
         logger.error(f"[장바구니 추가 오류] 예외 발생: {e}", exc_info=True)
         return jsonify({"success": False, "message": "장바구니에 담는 중 오류가 발생했습니다."}), 500
