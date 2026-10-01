@@ -153,7 +153,7 @@
             </div>
             <div class="modal-footer border-0">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
-                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn" onclick="handleDeleteConfirm(event)">
                     <i class="bi bi-trash3 me-1"></i>삭제
                 </button>
             </div>
@@ -162,15 +162,107 @@
 </div>
 
 <script>
-// ✅ 전역 변수 선언
+// ✅ 전역 변수 & 함수
 let deleteConfirmModal = null;
+let pendingDeleteCartId = null;
+
+// ✅ 삭제 확인 함수 (onclick 핸들러용)
+function handleDeleteConfirm(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    console.log(`[handleDeleteConfirm] 호출됨`);
+    console.log(`[handleDeleteConfirm] pendingDeleteCartId: ${pendingDeleteCartId}`);
+    
+    if (!pendingDeleteCartId) {
+        console.error(`[handleDeleteConfirm] cartId가 없음`);
+        alert("선택된 상품이 없습니다.");
+        return;
+    }
+    
+    const cartId = pendingDeleteCartId;
+    console.log(`[handleDeleteConfirm] DELETE 요청 시작: /cart/${cartId}`);
+    
+    // 모달 닫기
+    deleteConfirmModal?.hide();
+
+    // DELETE /cart/<cart_id> 요청
+    fetch(`/cart/${cartId}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" }
+    })
+    .then(res => {
+        console.log(`[DELETE] 응답 상태: ${res.status}`);
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        return res.json();
+    })
+    .then(data => {
+        console.log(`[DELETE] 응답 데이터:`, data);
+        if (data.success) {
+            console.log(`[DELETE] ✓ 삭제 성공: cartId=${cartId}`);
+            // 해당 행 제거
+            const row = document.getElementById(`cart-row-${cartId}`);
+            if (row) {
+                row.remove();
+                console.log(`[DELETE] ✓ 행 제거됨: cart-row-${cartId}`);
+            }
+
+            // 요약 업데이트
+            updateSummary();
+
+            // 장바구니가 비었는지 확인
+            const remainingRows = document.querySelectorAll("#cart-items-tbody tr");
+            console.log(`[DELETE] 남은 행의 수: ${remainingRows.length}`);
+            if (remainingRows.length === 0) {
+                // 장바구니 비었을 때
+                const cartContent = document.getElementById("cart-content");
+                if (cartContent) {
+                    cartContent.innerHTML = `
+                        <div class="text-center py-5 my-5">
+                            <i class="bi bi-cart-x fs-1 text-muted mb-3 d-block" style="font-size: 4rem !important;"></i>
+                            <h4 class="fw-bold text-secondary mb-2">장바구니가 비어 있습니다</h4>
+                            <p class="text-muted mb-4">원하는 상품을 찾아 장바구니에 담아보세요!</p>
+                            <a href="{{ url_for('main.index') }}#products" class="btn btn-primary px-4 py-2 fw-semibold rounded-pill">
+                                쇼핑하러 가기
+                            </a>
+                        </div>
+                    `;
+                }
+            }
+
+            // 성공 메시지
+            const alertDiv = document.createElement("div");
+            alertDiv.className = "alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3";
+            alertDiv.style.zIndex = "9999";
+            alertDiv.role = "alert";
+            alertDiv.innerHTML = `
+                <i class="bi bi-check-circle me-2"></i>장바구니에서 삭제되었습니다.
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            document.body.insertBefore(alertDiv, document.body.firstChild);
+            setTimeout(() => alertDiv.remove(), 3000);
+        } else {
+            console.error(`[DELETE] ✗ 삭제 실패: ${data.message}`);
+            alert(data.message || "삭제에 실패했습니다.");
+        }
+    })
+    .catch(err => {
+        console.error("[DELETE] ✗ 오류 발생:", err);
+        alert(`삭제 중 오류가 발생했습니다: ${err.message}`);
+    });
+    
+    // 초기화
+    pendingDeleteCartId = null;
+}
 
 document.addEventListener("DOMContentLoaded", () => {
     // 모달 초기화
     const modalElement = document.getElementById("deleteConfirmModal");
     if (modalElement) {
         deleteConfirmModal = new bootstrap.Modal(modalElement);
-        console.log("[초기화] 모달 초기화 완료");
+        console.log("[초기화] ✓ 모달 초기화 완료");
     }
 
     // 초기 요약 업데이트 (페이지 로드 시)
@@ -298,21 +390,12 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     // ===== 삭제 기능 =====
-    const confirmDeleteBtn = document.getElementById("confirmDeleteBtn");
-    const deleteProductName = document.getElementById("deleteProductName");
-    
-    console.log(`[초기화] confirmDeleteBtn: ${confirmDeleteBtn ? '✓' : '✗'}`);
     console.log(`[초기화] .btn-remove 버튼 개수: ${document.querySelectorAll(".btn-remove").length}개`);
     
-    // ✅ 핵심: document 레벨에서 .btn-remove 클릭 감지
+    // ✅ .btn-remove 클릭 처리
     document.addEventListener("click", (e) => {
-        // .btn-remove 클래스를 찾기 (부모 요소 포함)
         const removeBtn = e.target.closest(".btn-remove");
-        if (!removeBtn) {
-            return;  // .btn-remove가 아니면 무시
-        }
-        
-        console.log(`[삭제 버튼] ✓ 클릭됨 (e.target 확인)`);
+        if (!removeBtn) return;
         
         e.preventDefault();
         e.stopPropagation();
@@ -320,18 +403,14 @@ document.addEventListener("DOMContentLoaded", () => {
         const cartId = removeBtn.dataset.cartId;
         const productName = removeBtn.dataset.productName || "이 상품";
         
-        console.log(`[삭제 버튼] cartId=${cartId}, productName=${productName}`);
-        console.log(`[삭제 버튼] confirmDeleteBtn에 cartId 저장...`);
+        console.log(`[.btn-remove 클릭] cartId=${cartId}, productName=${productName}`);
         
-        // ✅ 모달 버튼에 cartId를 data attribute로 저장
-        if (confirmDeleteBtn) {
-            confirmDeleteBtn.dataset.cartId = cartId;
-            console.log(`[삭제 버튼] ✓ confirmDeleteBtn.dataset.cartId = "${cartId}"`);
-        } else {
-            console.error(`[삭제 버튼] ✗ confirmDeleteBtn이 없음!`);
-        }
+        // ✅ 전역 변수에 cartId 저장
+        pendingDeleteCartId = cartId;
+        console.log(`[.btn-remove 클릭] ✓ pendingDeleteCartId 설정: ${pendingDeleteCartId}`);
         
         // 모달에 상품명 설정
+        const deleteProductName = document.getElementById("deleteProductName");
         if (deleteProductName) {
             deleteProductName.textContent = productName;
         }
@@ -339,110 +418,9 @@ document.addEventListener("DOMContentLoaded", () => {
         // 모달 표시
         if (deleteConfirmModal) {
             deleteConfirmModal.show();
-            console.log(`[삭제 버튼] ✓ 모달 표시`);
+            console.log(`[.btn-remove 클릭] ✓ 모달 표시됨`);
         }
-    }, true);  // ✅ 캡처 단계에서 감지
-    
-    // 모달의 삭제 확인 버튼 클릭
-    if (confirmDeleteBtn) {
-        confirmDeleteBtn.addEventListener("click", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            console.log(`[모달 삭제] 버튼 클릭됨`);
-            
-            const cartId = confirmDeleteBtn.dataset.cartId;
-            console.log(`[모달 삭제] confirmDeleteBtn.dataset.cartId 읽기: "${cartId}"`);
-            console.log(`[모달 삭제] 타입: ${typeof cartId}`);
-            console.log(`[모달 삭제] 빈 문자열? ${cartId === ""}`);
-            console.log(`[모달 삭제] null? ${cartId === null}`);
-            console.log(`[모달 삭제] undefined? ${cartId === undefined}`);
-            
-            if (!cartId || cartId === "") {
-                console.error(`[모달 삭제] ✗ cartId가 없음: "${cartId}"`);
-                alert("선택된 상품이 없습니다.");
-                return;
-            }
-            
-            console.log(`[모달 삭제] ✓ DELETE 요청: /cart/${cartId}`);
-            
-            // 모달 닫기
-            deleteConfirmModal?.hide();
-
-            // DELETE /cart/<cart_id> 요청
-            fetch(`/cart/${cartId}`, {
-                method: "DELETE",
-                headers: { "Content-Type": "application/json" }
-            })
-            .then(res => {
-                console.log(`[삭제] 응답 상태: ${res.status}`);
-                if (!res.ok) {
-                    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-                }
-                return res.json();
-            })
-            .then(data => {
-                console.log(`[삭제] 응답 데이터:`, data);
-                if (data.success) {
-                    console.log(`[삭제] 성공: cartId=${cartId}`);
-                    // 해당 행 제거
-                    const row = document.getElementById(`cart-row-${cartId}`);
-                    if (row) {
-                        console.log(`[삭제] 행 제거: ${row.id}`);
-                        row.remove();
-                    } else {
-                        console.warn(`[삭제] 행을 찾을 수 없음: cart-row-${cartId}`);
-                    }
-
-                    // 요약 업데이트
-                    updateSummary();
-
-                    // 장바구니가 비었는지 확인
-                    const remainingRows = document.querySelectorAll("#cart-items-tbody tr");
-                    console.log(`[삭제] 남은 행의 수: ${remainingRows.length}`);
-                    if (remainingRows.length === 0) {
-                        // 장바구니 비었을 때
-                        console.log("[삭제] 장바구니 비움 상태로 변경");
-                        const cartContent = document.getElementById("cart-content");
-                        if (cartContent) {
-                            cartContent.innerHTML = `
-                                <div class="text-center py-5 my-5">
-                                    <i class="bi bi-cart-x fs-1 text-muted mb-3 d-block" style="font-size: 4rem !important;"></i>
-                                    <h4 class="fw-bold text-secondary mb-2">장바구니가 비어 있습니다</h4>
-                                    <p class="text-muted mb-4">원하는 상품을 찾아 장바구니에 담아보세요!</p>
-                                    <a href="{{ url_for('main.index') }}#products" class="btn btn-primary px-4 py-2 fw-semibold rounded-pill">
-                                        쇼핑하러 가기
-                                    </a>
-                                </div>
-                            `;
-                        }
-                    }
-
-                    // 성공 메시지
-                    const alertDiv = document.createElement("div");
-                    alertDiv.className = "alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3";
-                    alertDiv.style.zIndex = "9999";
-                    alertDiv.role = "alert";
-                    alertDiv.innerHTML = `
-                        <i class="bi bi-check-circle me-2"></i>장바구니에서 삭제되었습니다.
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                    `;
-                    document.body.insertBefore(alertDiv, document.body.firstChild);
-                    setTimeout(() => alertDiv.remove(), 3000);
-                } else {
-                    console.error(`[삭제] 삭제 실패: ${data.message}`);
-                    alert(data.message || "삭제에 실패했습니다.");
-                }
-            })
-            .catch(err => {
-                console.error("[삭제] 오류 발생:", err);
-                alert(`삭제 중 오류가 발생했습니다: ${err.message}`);
-            });
-            
-            // ✅ 모달 버튼의 data-cart-id 초기화
-            confirmDeleteBtn.dataset.cartId = "";
-        });
-    }
+    }, true);  // 캡처 단계에서 감지
 });
 </script>
 {% endblock %}
