@@ -280,3 +280,44 @@ body {
         padding: 1rem;
     }
 }
+
+/* ==========================================================================
+   6. 상품 상세 페이지 코랄 테마 및 버튼 스타일
+   ========================================================================== */
+.btn-buy-now-coral {
+    background-color: var(--color-coral) !important;
+    border-color: var(--color-coral) !important;
+    color: #ffffff !important;
+    transition: all 0.2s ease-in-out;
+}
+
+.btn-buy-now-coral:hover:not(:disabled) {
+    background-color: var(--color-coral-hover) !important;
+    border-color: var(--color-coral-hover) !important;
+    box-shadow: 0 4px 14px rgba(255, 107, 91, 0.4);
+    transform: translateY(-1px);
+}
+
+.text-coral {
+    color: var(--color-coral) !important;
+}
+
+.bg-coral {
+    background-color: var(--color-coral) !important;
+    color: #ffffff !important;
+}
+
+.border-coral {
+    border-color: var(--color-coral) !important;
+}
+
+.btn-outline-coral {
+    color: var(--color-coral) !important;
+    border-color: var(--color-coral) !important;
+}
+
+.btn-outline-coral:hover:not(:disabled) {
+    background-color: var(--color-coral) !important;
+    border-color: var(--color-coral) !important;
+    color: #ffffff !important;
+}
