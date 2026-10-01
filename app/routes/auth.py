@@ -6,7 +6,7 @@ import secrets
 import urllib.parse
 import urllib.request
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
-from app.utils import get_supabase_client, get_supabase_admin_client, extract_display_name, extract_real_name, save_auth_session
+from app.utils import get_supabase_client, get_supabase_admin_client, extract_display_name, extract_real_name, save_auth_session, issue_supabase_session
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
@@ -456,6 +456,9 @@ def naver_callback():
                         admin_client.table("profiles").insert(profile_insert_data).execute()
                 except Exception as pe:
                     logger.warning(f"[네이버 프로필 테이블 동기화 경고] {pe}")
+
+                # RLS 기반 장바구니 등 DB 접근을 위해 사용자 JWT 발급
+                issue_supabase_session(admin_client, email)
 
         # 4. 세션 등록 및 로그인 완료
         session["user"] = {

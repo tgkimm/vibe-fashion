@@ -23,6 +23,27 @@ def save_auth_session(supabase_session) -> None:
         session["refresh_token"] = refresh_token
 
 
+def issue_supabase_session(admin_client, email: str) -> bool:
+    """
+    네이버 등 외부 인증을 마친 사용자에게 Supabase 세션(JWT)을 발급해 Flask 세션에 저장합니다.
+    매직링크 토큰을 서버에서 즉시 검증하므로 메일은 발송되지 않으며, 이후 DB 접근은 RLS가 적용된 사용자 JWT로 수행됩니다.
+    """
+    session.pop("access_token", None)
+    session.pop("refresh_token", None)
+    try:
+        link = admin_client.auth.admin.generate_link({"type": "magiclink", "email": email})
+        result = get_supabase_client().auth.verify_otp({
+            "token_hash": link.properties.hashed_token,
+            "type": "magiclink",
+        })
+        if result and result.session:
+            save_auth_session(result.session)
+            return True
+    except Exception as e:
+        logger.warning(f"[Supabase 세션 발급 실패] {e}")
+    return False
+
+
 def _jwt_expiry(token: str) -> float:
     """JWT payload의 exp(초)를 반환합니다. 해석 실패 시 0 (만료로 간주)."""
     try:
