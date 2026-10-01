@@ -75,7 +75,11 @@
                                         {{ "{:,}".format(item.price * item.quantity) }}원
                                     </td>
                                     <td class="text-center">
-                                        <button class="btn btn-sm btn-link text-danger p-0 btn-remove" data-cart-id="{{ item.id }}" data-product-name="{{ item.name }}" title="품목 삭제">
+                                        <button class="btn btn-sm btn-link text-danger p-0 btn-remove" 
+                                                data-cart-id="{{ item.id }}" 
+                                                data-product-name="{{ item.name }}" 
+                                                onclick="showDeleteModal('{{ item.id }}', '{{ item.name }}'); return false;"
+                                                title="품목 삭제">
                                             <i class="bi bi-trash3 fs-5"></i>
                                         </button>
                                     </td>
@@ -166,6 +170,30 @@
 let deleteConfirmModal = null;
 let pendingDeleteCartId = null;
 
+// ✅ .btn-remove 클릭 시 호출 - showDeleteModal 추가
+function showDeleteModal(cartId, productName) {
+    console.log(`[showDeleteModal] 호출됨: cartId=${cartId}, productName=${productName}`);
+    
+    // ✅ 전역 변수에 cartId 저장
+    pendingDeleteCartId = String(cartId);
+    console.log(`[showDeleteModal] ✓ pendingDeleteCartId 설정: ${pendingDeleteCartId}`);
+    
+    // 모달에 상품명 설정
+    const deleteProductName = document.getElementById("deleteProductName");
+    if (deleteProductName) {
+        deleteProductName.textContent = productName;
+        console.log(`[showDeleteModal] ✓ 상품명 설정: ${productName}`);
+    }
+    
+    // 모달 표시
+    if (deleteConfirmModal) {
+        deleteConfirmModal.show();
+        console.log(`[showDeleteModal] ✓ 모달 표시됨`);
+    } else {
+        console.error(`[showDeleteModal] ✗ deleteConfirmModal이 없음`);
+    }
+}
+
 // ✅ 삭제 확인 함수 (onclick 핸들러용)
 function handleDeleteConfirm(event) {
     event.preventDefault();
@@ -174,14 +202,14 @@ function handleDeleteConfirm(event) {
     console.log(`[handleDeleteConfirm] 호출됨`);
     console.log(`[handleDeleteConfirm] pendingDeleteCartId: ${pendingDeleteCartId}`);
     
-    if (!pendingDeleteCartId) {
-        console.error(`[handleDeleteConfirm] cartId가 없음`);
+    if (!pendingDeleteCartId || pendingDeleteCartId === "") {
+        console.error(`[handleDeleteConfirm] ✗ cartId가 없음: "${pendingDeleteCartId}"`);
         alert("선택된 상품이 없습니다.");
         return;
     }
     
     const cartId = pendingDeleteCartId;
-    console.log(`[handleDeleteConfirm] DELETE 요청 시작: /cart/${cartId}`);
+    console.log(`[handleDeleteConfirm] ✓ DELETE 요청 시작: /cart/${cartId}`);
     
     // 모달 닫기
     deleteConfirmModal?.hide();
@@ -389,38 +417,8 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    // ===== 삭제 기능 =====
-    console.log(`[초기화] .btn-remove 버튼 개수: ${document.querySelectorAll(".btn-remove").length}개`);
-    
-    // ✅ .btn-remove 클릭 처리
-    document.addEventListener("click", (e) => {
-        const removeBtn = e.target.closest(".btn-remove");
-        if (!removeBtn) return;
-        
-        e.preventDefault();
-        e.stopPropagation();
-        
-        const cartId = removeBtn.dataset.cartId;
-        const productName = removeBtn.dataset.productName || "이 상품";
-        
-        console.log(`[.btn-remove 클릭] cartId=${cartId}, productName=${productName}`);
-        
-        // ✅ 전역 변수에 cartId 저장
-        pendingDeleteCartId = cartId;
-        console.log(`[.btn-remove 클릭] ✓ pendingDeleteCartId 설정: ${pendingDeleteCartId}`);
-        
-        // 모달에 상품명 설정
-        const deleteProductName = document.getElementById("deleteProductName");
-        if (deleteProductName) {
-            deleteProductName.textContent = productName;
-        }
-        
-        // 모달 표시
-        if (deleteConfirmModal) {
-            deleteConfirmModal.show();
-            console.log(`[.btn-remove 클릭] ✓ 모달 표시됨`);
-        }
-    }, true);  // 캡처 단계에서 감지
+    // ===== 초기화 완료 =====
+    console.log(`[초기화] ✓ 모든 이벤트 리스너 등록 완료`);
 });
 </script>
 {% endblock %}
