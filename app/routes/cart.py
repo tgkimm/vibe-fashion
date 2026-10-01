@@ -73,7 +73,7 @@ def view_cart():
 
                 product = prod_res.data
 
-                # option 정보 조회 (color, size, additional_price 등)
+                # option 정보 조회 (color, size, additional_price, stock 등)
                 opt_res = (
                     supabase.table("product_options")
                     .select("id, color, size, stock, stock_quantity, additional_price")
@@ -83,6 +83,13 @@ def view_cart():
                 )
 
                 option = opt_res.data if opt_res.data else {}
+
+                # 재고 확인 (stock 우선, 없으면 stock_quantity)
+                stock = option.get("stock")
+                if stock is None:
+                    stock = option.get("stock_quantity", 0)
+                stock = int(stock or 0)
+                is_out_of_stock = stock == 0
 
                 # 가격 계산
                 raw_price = product.get("sale_price") if product.get("sale_price") is not None else product.get("price", 0)
@@ -104,6 +111,8 @@ def view_cart():
                     "price": unit_price,
                     "thumbnail_url": thumbnail_url,
                     "quantity": quantity,
+                    "stock": stock,
+                    "is_out_of_stock": is_out_of_stock,
                     "key": cart_item["id"]  # 호환성 유지
                 }
 

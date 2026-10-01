@@ -32,7 +32,7 @@
                             </thead>
                             <tbody id="cart-items-tbody">
                                 {% for item in items %}
-                                <tr id="cart-row-{{ item.id }}">
+                                <tr id="cart-row-{{ item.id }}" data-is-out-of-stock="{{ item.is_out_of_stock|lower }}">
                                     <td>
                                         <div class="d-flex align-items-center gap-3">
                                             <a href="{{ url_for('main.product_detail', product_id=item.product_id) }}">
@@ -45,13 +45,18 @@
                                                     </a>
                                                 </h6>
                                                 {% if item.color or item.size %}
-                                                <div class="small text-muted">
+                                                <div class="small text-muted mb-2">
                                                     <span class="badge bg-light text-secondary border">
                                                         {% if item.color %}색상: {{ item.color }}{% endif %}
                                                         {% if item.color and item.size %} / {% endif %}
                                                         {% if item.size %}사이즈: {{ item.size }}{% endif %}
                                                     </span>
                                                 </div>
+                                                {% endif %}
+                                                {% if item.is_out_of_stock %}
+                                                <span class="badge bg-danger text-white">
+                                                    <i class="bi bi-exclamation-triangle me-1"></i>품절됨
+                                                </span>
                                                 {% endif %}
                                             </div>
                                         </div>
@@ -61,9 +66,9 @@
                                     </td>
                                     <td>
                                         <div class="input-group input-group-sm justify-content-center mx-auto" style="max-width: 110px;">
-                                            <button class="btn btn-outline-secondary btn-decrease" data-cart-id="{{ item.id }}" type="button">-</button>
-                                            <input type="number" class="form-control text-center quantity-input" value="{{ item.quantity }}" min="1" max="99" data-cart-id="{{ item.id }}" data-price="{{ item.price }}">
-                                            <button class="btn btn-outline-secondary btn-increase" data-cart-id="{{ item.id }}" type="button">+</button>
+                                            <button class="btn btn-outline-secondary btn-decrease" data-cart-id="{{ item.id }}" type="button" {% if item.is_out_of_stock %}disabled{% endif %}>-</button>
+                                            <input type="number" class="form-control text-center quantity-input" value="{{ item.quantity }}" min="1" max="99" data-cart-id="{{ item.id }}" data-price="{{ item.price }}" data-stock="{{ item.stock }}" {% if item.is_out_of_stock %}disabled{% endif %}>
+                                            <button class="btn btn-outline-secondary btn-increase" data-cart-id="{{ item.id }}" type="button" {% if item.is_out_of_stock %}disabled{% endif %}>+</button>
                                         </div>
                                     </td>
                                     <td class="text-end fw-bold text-primary item-total-price" id="item-total-{{ item.id }}">
@@ -96,14 +101,20 @@
                     </div>
                     <div class="d-flex justify-content-between mb-3">
                         <span class="text-muted">배송비</span>
-                        <span class="text-success fw-semibold">무료</span>
+                        <span class="fw-semibold" id="summary-shipping">
+                            <span id="shipping-amount">0</span>원
+                        </span>
                     </div>
                     <hr>
                     <div class="d-flex justify-content-between align-items-center mb-4">
                         <span class="fs-5 fw-bold">총 결제 예정 금액</span>
                         <span class="fs-4 fw-bold text-primary" id="summary-total-amount">{{ "{:,}".format(total_amount) }}원</span>
                     </div>
-                    <a href="{{ url_for('cart.checkout') }}" class="btn btn-primary w-100 py-3 fw-bold rounded-3 shadow-sm text-center text-decoration-none">
+                    <div id="out-of-stock-alert" class="alert alert-warning d-none mb-3" role="alert">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <small>품절된 상품이 있어 주문할 수 없습니다. 품절 상품을 삭제해주세요.</small>
+                    </div>
+                    <a href="/order/checkout" id="checkout-btn" class="btn btn-primary w-100 py-3 fw-bold rounded-3 shadow-sm text-center text-decoration-none">
                         <i class="bi bi-credit-card me-2"></i>주문하기
                     </a>
                 </div>
@@ -161,6 +172,9 @@ document.addEventListener("DOMContentLoaded", () => {
         deleteConfirmModal = new bootstrap.Modal(modalElement);
     }
 
+    // 초기 요약 업데이트 (페이지 로드 시)
+    updateSummary();
+
     // 수량 변경 함수 (PATCH /cart/<cart_id>)
     function updateCartQuantity(cartId, quantity) {
         fetch(`/cart/${cartId}`, {
@@ -195,12 +209,18 @@ document.addEventListener("DOMContentLoaded", () => {
     function updateSummary() {
         let totalAmount = 0;
         let totalCount = 0;
+        let hasOutOfStock = false;
 
         document.querySelectorAll("#cart-items-tbody tr").forEach(row => {
             const cartId = row.id.replace("cart-row-", "");
             const quantityInput = row.querySelector(".quantity-input");
             const priceStr = quantityInput?.dataset.price;
             const quantity = parseInt(quantityInput?.value) || 0;
+            const isOutOfStock = row.dataset.isOutOfStock === "true";
+
+            if (isOutOfStock) {
+                hasOutOfStock = true;
+            }
 
             if (priceStr && quantity > 0) {
                 const price = parseInt(priceStr);
@@ -209,9 +229,27 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
 
+        // 배송비 계산 (50,000원 미만 3,000원, 이상 무료)
+        const shippingCost = totalAmount < 50000 ? 3000 : 0;
+        const finalTotal = totalAmount + shippingCost;
+
         document.getElementById("summary-total-count").textContent = `${totalCount}개`;
         document.getElementById("summary-subtotal").textContent = `${totalAmount.toLocaleString()}원`;
-        document.getElementById("summary-total-amount").textContent = `${totalAmount.toLocaleString()}원`;
+        document.getElementById("shipping-amount").textContent = `${shippingCost.toLocaleString()}`;
+        document.getElementById("summary-total-amount").textContent = `${finalTotal.toLocaleString()}원`;
+
+        // 품절 상품이 있으면 주문 버튼 비활성화
+        const checkoutBtn = document.getElementById("checkout-btn");
+        const alertDiv = document.getElementById("out-of-stock-alert");
+        if (hasOutOfStock) {
+            checkoutBtn.classList.add("disabled");
+            checkoutBtn.style.pointerEvents = "none";
+            alertDiv.classList.remove("d-none");
+        } else {
+            checkoutBtn.classList.remove("disabled");
+            checkoutBtn.style.pointerEvents = "auto";
+            alertDiv.classList.add("d-none");
+        }
     }
 
     // 증가 버튼
@@ -219,10 +257,13 @@ document.addEventListener("DOMContentLoaded", () => {
         btn.addEventListener("click", () => {
             const cartId = btn.dataset.cartId;
             const input = document.querySelector(`.quantity-input[data-cart-id="${cartId}"]`);
+            const stock = parseInt(input.dataset.stock) || 99;
             let val = parseInt(input.value) || 1;
-            val = Math.min(val + 1, 99);
-            input.value = val;
-            updateCartQuantity(cartId, val);
+            if (val < stock) {
+                val = Math.min(val + 1, 99, stock);
+                input.value = val;
+                updateCartQuantity(cartId, val);
+            }
         });
     });
 
@@ -244,10 +285,13 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll(".quantity-input").forEach(input => {
         input.addEventListener("change", () => {
             const cartId = input.dataset.cartId;
+            const stock = parseInt(input.dataset.stock) || 99;
             let val = parseInt(input.value) || 1;
             if (val < 1) val = 1;
-            if (val > 99) val = 99;
-            input.value = val;
+            if (val > stock) {
+                val = stock;
+                input.value = val;
+            }
             updateCartQuantity(cartId, val);
         });
     });
