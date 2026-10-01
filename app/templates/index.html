@@ -273,6 +273,13 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         });
     });
+
+    // 뒤로가기(BFCache) 등으로 페이지 복귀 시 비활성화된 버튼 상태 복원
+    window.addEventListener("pageshow", () => {
+        document.querySelectorAll(".btn-buy-now, .btn-add-cart").forEach(button => {
+            button.disabled = false;
+        });
+    });
 });
 </script>
 {% endblock %}
