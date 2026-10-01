@@ -122,6 +122,8 @@ def get_success_message(code: str) -> str:
         "password_changed": "비밀번호가 성공적으로 변경되었습니다. 새 비밀번호로 로그인해 주세요.",
         "name_updated": "이름이 성공적으로 변경되었습니다.",
         "nickname_updated": "닉네임이 성공적으로 변경되었습니다.",
+        "address_updated": "기본 배송지가 성공적으로 저장되었습니다.",
+        "profile_updated": "회원 정보가 성공적으로 변경되었습니다.",
         "email_update_sent": "새 이메일 주소로 인증 메일이 발송되었습니다. 메일함의 링크를 클릭하여 인증을 완료해 주세요.",
         "password_updated": "비밀번호가 성공적으로 변경되었습니다.",
         "logged_out": "정상적으로 로그아웃되었습니다.",
@@ -959,7 +961,7 @@ def mypage():
     """
     마이페이지:
     - login_required 데코레이터 적용
-    - 회원 정보 표시
+    - profiles 테이블에서 회원 정보 조회 및 표시
     """
     error_code = request.args.get("error", "")
     error_msg = get_error_message(error_code) if error_code else None
@@ -970,24 +972,34 @@ def mypage():
     user_info = session.get("user")
     supabase = get_supabase_client()
     admin_client = get_supabase_admin_client()
+    profile = {}
+
     if user_info:
         try:
-            # 1. 닉네임 최신화 (profiles 테이블)
             client_to_use = admin_client or supabase
             if client_to_use:
-                p_res = client_to_use.table("profiles").select("name").eq("id", user_info["id"]).execute()
+                p_res = client_to_use.table("profiles").select("*").eq("id", user_info["id"]).execute()
                 if p_res.data and len(p_res.data) > 0:
-                    p_name = p_res.data[0].get("name")
+                    profile = p_res.data[0]
+                    p_name = profile.get("name")
                     if p_name:
                         user_info["name"] = p_name
+                    p_real_name = profile.get("real_name")
+                    if p_real_name:
+                        user_info["real_name"] = p_real_name
 
-            # 2. 실명(이름) 최신화 (auth.users 메타데이터)
+            # 실명(이름) 최신화 (auth.users 메타데이터 보완)
             if admin_client:
                 u_res = admin_client.auth.admin.get_user_by_id(user_info["id"])
                 if u_res and getattr(u_res, "user", None):
                     latest_real_name = extract_real_name(u_res.user)
                     if latest_real_name:
                         user_info["real_name"] = latest_real_name
+                        if not profile.get("real_name"):
+                            profile["real_name"] = latest_real_name
+                    meta = getattr(u_res.user, "user_metadata", {}) or {}
+                    if not profile.get("address") and meta.get("address"):
+                        profile["address"] = meta.get("address")
 
             session["user"] = user_info
             session.modified = True
@@ -997,6 +1009,7 @@ def mypage():
     return render_template(
         "mypage.html",
         user=session.get("user"),
+        profile=profile,
         error_msg=error_msg,
         success_msg=success_msg
     )
@@ -1198,6 +1211,91 @@ def update_profile():
             return redirect(url_for("auth.mypage", msg="password_updated"))
         else:
             return redirect(url_for("auth.mypage", error="reset_failed"))
+
+    # 4. 기본 배송지 수정 처리
+    elif action == "update_address":
+        address = request.form.get("address", "").strip()
+        # profiles 테이블에 address 컬럼 업데이트 시도
+        try:
+            client_to_use = admin_client or supabase
+            client_to_use.table("profiles").update({"address": address}).eq("id", user_id).execute()
+        except Exception as e:
+            logger.warning(f"[profiles 배송지 수정 실패 - 컬럼 미존재 가능성] {e}")
+
+        # auth.users 메타데이터에도 동기화
+        if admin_client:
+            try:
+                target_user = admin_client.auth.admin.get_user_by_id(user_id)
+                current_meta = dict(getattr(target_user.user, "user_metadata", {}) or {}) if target_user and getattr(target_user, "user", None) else {}
+                current_meta["address"] = address
+                admin_client.auth.admin.update_user_by_id(
+                    user_id,
+                    {"user_metadata": current_meta}
+                )
+            except Exception as e:
+                logger.warning(f"[auth.users 메타데이터 배송지 수정 실패] {e}")
+
+        session["user"]["address"] = address
+        session.modified = True
+        return redirect(url_for("auth.mypage", msg="address_updated"))
+
+    # 5. 전체 프로필 일괄 수정 처리 (이름, 닉네임, 기본 배송지)
+    elif action == "update_profile_all":
+        new_name = request.form.get("name", "").strip()
+        new_nickname = request.form.get("nickname", "").strip()
+        new_address = request.form.get("address", "").strip()
+
+        if not new_nickname or len(new_nickname) < 2:
+            return redirect(url_for("auth.mypage", error="nickname_too_short"))
+
+        # 닉네임 중복 체크
+        try:
+            check_res = supabase.table("profiles").select("id").eq("name", new_nickname).execute()
+            if check_res.data:
+                other_users = [u for u in check_res.data if u.get("id") != user_id]
+                if other_users:
+                    return redirect(url_for("auth.mypage", error="nickname_exists"))
+        except Exception as e:
+            logger.warning(f"[닉네임 중복 확인 예외] {e}")
+
+        # profiles 테이블 업데이트
+        profile_update_data = {"name": new_nickname}
+        if new_name:
+            profile_update_data["real_name"] = new_name
+        try:
+            client_to_use = admin_client or supabase
+            # address 컬럼 포함하여 업데이트 시도
+            client_to_use.table("profiles").update({**profile_update_data, "address": new_address}).eq("id", user_id).execute()
+        except Exception:
+            try:
+                client_to_use.table("profiles").update(profile_update_data).eq("id", user_id).execute()
+            except Exception as e:
+                logger.error(f"[profiles 프로필 일괄 업데이트 실패] {e}", exc_info=True)
+
+        # auth.users 메타데이터 업데이트
+        if admin_client:
+            try:
+                target_user = admin_client.auth.admin.get_user_by_id(user_id)
+                current_meta = dict(getattr(target_user.user, "user_metadata", {}) or {}) if target_user and getattr(target_user, "user", None) else {}
+                current_meta["nickname"] = new_nickname
+                current_meta["name"] = new_nickname
+                if new_name:
+                    current_meta["real_name"] = new_name
+                    current_meta["full_name"] = new_name
+                current_meta["address"] = new_address
+                admin_client.auth.admin.update_user_by_id(
+                    user_id,
+                    {"user_metadata": current_meta}
+                )
+            except Exception as e:
+                logger.warning(f"[auth.users 메타데이터 일괄 업데이트 실패] {e}")
+
+        session["user"]["name"] = new_nickname
+        if new_name:
+            session["user"]["real_name"] = new_name
+        session["user"]["address"] = new_address
+        session.modified = True
+        return redirect(url_for("auth.mypage", msg="profile_updated"))
 
     return redirect(url_for("auth.mypage"))
 

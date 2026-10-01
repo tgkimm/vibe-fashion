@@ -5,14 +5,14 @@
 {% block content %}
 <div class="container py-5">
     <div class="row justify-content-center">
-        <div class="col-12 col-md-9 col-lg-7">
+        <div class="col-12 col-md-10 col-lg-8">
             <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5">
                 <div class="d-flex align-items-center mb-4">
                     <div class="rounded-circle bg-primary bg-opacity-10 d-inline-flex align-items-center justify-content-center p-3 me-3 text-primary" style="width: 60px; height: 60px;">
                         <i class="bi bi-person-circle fs-2"></i>
                     </div>
                     <div>
-                        <h4 class="fw-bold mb-1">{{ user.name or '회원' }}님의 마이페이지</h4>
+                        <h4 class="fw-bold mb-1">{{ user.real_name or user.name or '회원' }}님의 마이페이지</h4>
                         <p class="text-muted small mb-0">{{ user.email }}</p>
                     </div>
                 </div>
@@ -31,121 +31,190 @@
                 </div>
                 {% endif %}
 
-                <!-- 기본 회원 정보 표시 -->
-                <div class="list-group list-group-flush border-top border-bottom mb-4">
-                    <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-3">
-                        <span class="text-muted">회원 ID (고유번호)</span>
-                        <span class="fw-semibold font-monospace small text-muted">{{ user.id }} <span class="badge bg-light text-secondary border ms-1">변경 불가</span></span>
-                    </div>
-                    <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-3">
-                        <span class="text-muted">이름 (실명)</span>
-                        <span class="fw-semibold">{{ user.real_name or user.name or '-' }}</span>
-                    </div>
-                    <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-3">
-                        <span class="text-muted">닉네임</span>
-                        <span class="fw-semibold">{{ user.name or '-' }}</span>
-                    </div>
-                    <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-3">
-                        <span class="text-muted">이메일</span>
-                        <span class="fw-semibold">{{ user.email }}</span>
-                    </div>
-                    <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-3">
-                        <span class="text-muted">계정 상태</span>
-                        <span class="badge bg-success-subtle text-success px-2 py-1">인증 완료</span>
-                    </div>
-                </div>
+                <!-- Bootstrap 5 nav-tabs 3개 -->
+                <ul class="nav nav-tabs nav-fill mb-4" id="myPageTab" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active fw-semibold" id="profile-tab" data-bs-toggle="tab" data-bs-target="#profile-tab-pane" type="button" role="tab" aria-controls="profile-tab-pane" aria-selected="true">
+                            <i class="bi bi-person me-1"></i>내 정보
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link fw-semibold" id="orders-tab" data-bs-toggle="tab" data-bs-target="#orders-tab-pane" type="button" role="tab" aria-controls="orders-tab-pane" aria-selected="false">
+                            <i class="bi bi-bag-check me-1"></i>주문 내역
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link fw-semibold" id="refunds-tab" data-bs-toggle="tab" data-bs-target="#refunds-tab-pane" type="button" role="tab" aria-controls="refunds-tab-pane" aria-selected="false">
+                            <i class="bi bi-arrow-counterclockwise me-1"></i>환불 내역
+                        </button>
+                    </li>
+                </ul>
 
-                <!-- 개인정보 수정 영역 (아코디언) -->
-                <div class="accordion mb-4" id="profileEditAccordion">
-                    <div class="accordion-item border rounded-3 overflow-hidden">
-                        <h2 class="accordion-header" id="headingProfile">
-                            <button class="accordion-button collapsed fw-semibold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseProfile" aria-expanded="false" aria-controls="collapseProfile">
-                                <i class="bi bi-gear me-2 text-primary"></i>개인정보 수정 (이름 / 닉네임 / 이메일 / 비밀번호)
-                            </button>
-                        </h2>
-                        <div id="collapseProfile" class="accordion-collapse collapse" aria-labelledby="headingProfile" data-bs-parent="#profileEditAccordion">
-                            <div class="accordion-body bg-light bg-opacity-50">
-                                
-                                <!-- 1. 이름(실명) 수정 폼 -->
-                                <form method="POST" action="{{ url_for('auth.update_profile') }}" class="mb-4 pb-3 border-bottom">
-                                    <input type="hidden" name="action" value="update_name">
-                                    <div class="mb-2">
-                                        <label for="editName" class="form-label fw-semibold small">이름 (실명) 변경</label>
-                                        <div class="input-group">
-                                            <input type="text" class="form-control" id="editName" name="name" value="{{ user.real_name or user.name or '' }}" placeholder="새 이름 입력" required>
-                                            <button type="submit" class="btn btn-primary px-3">이름 변경</button>
-                                        </div>
-                                        <div class="form-text small text-muted">주문서 및 배송 정보에 기본 적용되는 실명입니다.</div>
+                <div class="tab-content" id="myPageTabContent">
+                    <!-- 탭 1: 내 정보 -->
+                    <div class="tab-pane fade show active" id="profile-tab-pane" role="tabpanel" aria-labelledby="profile-tab" tabindex="0">
+                        <!-- profiles 테이블 조회 정보 표시 -->
+                        <div class="bg-light bg-opacity-50 rounded-4 p-4 mb-4 border">
+                            <h6 class="fw-bold mb-3 text-secondary">
+                                <i class="bi bi-card-list me-1 text-primary"></i>회원 프로필 정보
+                            </h6>
+                            <div class="row g-3">
+                                <div class="col-sm-6">
+                                    <div class="small text-muted mb-1">이름 (실명)</div>
+                                    <div class="fw-semibold">{{ profile.real_name or user.real_name or user.name or '-' }}</div>
+                                </div>
+                                <div class="col-sm-6">
+                                    <div class="small text-muted mb-1">닉네임</div>
+                                    <div class="fw-semibold">{{ profile.name or user.name or '-' }}</div>
+                                </div>
+                                <div class="col-sm-6">
+                                    <div class="small text-muted mb-1">이메일</div>
+                                    <div class="fw-semibold">{{ profile.email or user.email }}</div>
+                                </div>
+                                <div class="col-sm-6">
+                                    <div class="small text-muted mb-1">기본 배송지</div>
+                                    <div class="fw-semibold text-break">{{ profile.address or user.address or '등록된 기본 배송지가 없습니다.' }}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 회원 정보 수정 폼 -->
+                        <div class="card border rounded-4 mb-4">
+                            <div class="card-body p-4">
+                                <h6 class="fw-bold mb-3">
+                                    <i class="bi bi-pencil-square me-1 text-primary"></i>내 정보 수정
+                                </h6>
+                                <form method="POST" action="{{ url_for('auth.update_profile') }}" id="formUpdateProfileAll">
+                                    <input type="hidden" name="action" value="update_profile_all">
+                                    
+                                    <!-- 이름 -->
+                                    <div class="mb-3">
+                                        <label for="editName" class="form-label small fw-semibold">이름 (실명)</label>
+                                        <input type="text" class="form-control" id="editName" name="name" value="{{ profile.real_name or user.real_name or user.name or '' }}" placeholder="이름을 입력하세요" required>
                                     </div>
-                                </form>
 
-                                <!-- 2. 닉네임 수정 폼 -->
-                                <form method="POST" action="{{ url_for('auth.update_profile') }}" class="mb-4 pb-3 border-bottom" id="formUpdateNickname">
-                                    <input type="hidden" name="action" value="update_nickname">
-                                    <div class="mb-2">
-                                        <label for="editNickname" class="form-label fw-semibold small">닉네임 변경</label>
+                                    <!-- 닉네임 -->
+                                    <div class="mb-3">
+                                        <label for="editNickname" class="form-label small fw-semibold">닉네임</label>
                                         <div class="input-group">
-                                            <input type="text" class="form-control" id="editNickname" name="nickname" value="{{ user.name or '' }}" data-original-nickname="{{ user.name or '' }}" placeholder="새 닉네임 입력" required>
+                                            <input type="text" class="form-control" id="editNickname" name="nickname" value="{{ profile.name or user.name or '' }}" data-original-nickname="{{ profile.name or user.name or '' }}" placeholder="새 닉네임 입력" required>
                                             <button class="btn btn-outline-secondary" type="button" id="btnCheckMypageNickname">중복 확인</button>
-                                            <button type="submit" class="btn btn-primary px-3" id="btnSubmitNickname">닉네임 변경</button>
                                         </div>
                                         <div id="mypageNicknameFeedback" class="form-text small">다른 회원과 중복되지 않는 닉네임을 설정해 주세요.</div>
                                     </div>
-                                </form>
 
-                                <!-- 3. 이메일 수정 폼 -->
-                                <form method="POST" action="{{ url_for('auth.update_profile') }}" class="mb-4 pb-3 border-bottom">
-                                    <input type="hidden" name="action" value="update_email">
-                                    <div class="mb-2">
-                                        <label for="editEmail" class="form-label fw-semibold small">이메일 주소 변경</label>
-                                        <div class="input-group">
-                                            <input type="email" class="form-control" id="editEmail" name="email" placeholder="새로운 이메일 주소 입력" required>
-                                            <button type="submit" class="btn btn-warning px-3">인증 메일 전송</button>
-                                        </div>
-                                        <div class="form-text small text-danger">
-                                            <i class="bi bi-info-circle me-1"></i>이메일 변경 시 입력하신 새 이메일 주소로 인증 메일이 발송되며, 메일함에서 인증을 완료해야 변경이 완료됩니다.
-                                        </div>
-                                    </div>
-                                </form>
-
-                                <!-- 4. 비밀번호 변경 폼 -->
-                                <form method="POST" action="{{ url_for('auth.update_profile') }}">
-                                    <input type="hidden" name="action" value="update_password">
+                                    <!-- 이메일 (읽기 전용 표시) -->
                                     <div class="mb-3">
-                                        <label for="currentPassword" class="form-label fw-semibold small">현재 비밀번호 <span class="text-danger">*</span></label>
-                                        <input type="password" class="form-control" id="currentPassword" name="current_password" placeholder="현재 사용 중인 비밀번호" required>
+                                        <label class="form-label small fw-semibold">이메일 (계정 ID)</label>
+                                        <input type="email" class="form-control bg-light" value="{{ profile.email or user.email }}" readonly>
+                                        <div class="form-text small text-muted">이메일 주소 변경은 아래 보안 설정 메뉴를 이용해 주세요.</div>
                                     </div>
 
-                                    <div class="mb-3">
-                                        <label for="newPassword" class="form-label fw-semibold small">새 비밀번호 <span class="text-danger">*</span></label>
-                                        <input type="password" class="form-control" id="newPassword" name="new_password" placeholder="영문 대문자, 특수문자 포함 8자 이상" minlength="8" required>
-                                        <div class="mt-2 p-2 bg-white rounded-2 border">
-                                            <div class="small fw-semibold text-muted mb-1">비밀번호 충족 조건:</div>
-                                            <ul class="list-unstyled mb-0 small">
-                                                <li id="mypage-rule-len" class="text-danger"><i class="bi bi-x-circle me-1"></i>최소 8자 이상</li>
-                                                <li id="mypage-rule-upper" class="text-danger"><i class="bi bi-x-circle me-1"></i>영문 대문자 1개 이상 포함</li>
-                                                <li id="mypage-rule-special" class="text-danger"><i class="bi bi-x-circle me-1"></i>특수문자(!@#$%^&* 등) 1개 이상 포함</li>
-                                            </ul>
-                                        </div>
+                                    <!-- 기본 배송지 -->
+                                    <div class="mb-4">
+                                        <label for="editAddress" class="form-label small fw-semibold">기본 배송지</label>
+                                        <input type="text" class="form-control" id="editAddress" name="address" value="{{ profile.address or user.address or '' }}" placeholder="배송지 주소를 입력하세요">
+                                        <div class="form-text small text-muted">주문 결제 시 기본으로 적용되는 배송 주소입니다.</div>
                                     </div>
 
-                                    <div class="mb-3">
-                                        <label for="newPasswordConfirm" class="form-label fw-semibold small">새 비밀번호 확인 <span class="text-danger">*</span></label>
-                                        <input type="password" class="form-control" id="newPasswordConfirm" name="new_password_confirm" placeholder="새 비밀번호 재입력" minlength="8" required>
-                                        <div id="mypagePwMatchFeedback" class="form-text mt-1 small"></div>
-                                    </div>
-
-                                    <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold rounded-3">
-                                        비밀번호 변경하기
+                                    <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold rounded-3" id="btnSubmitProfile">
+                                        <i class="bi bi-check-lg me-1"></i>정보 수정 저장
                                     </button>
                                 </form>
-
                             </div>
+                        </div>
+
+                        <!-- 추가 보안 관리 (아코디언): 이메일/비밀번호 변경 -->
+                        <div class="accordion mb-4" id="profileSecurityAccordion">
+                            <div class="accordion-item border rounded-3 overflow-hidden">
+                                <h2 class="accordion-header" id="headingSecurity">
+                                    <button class="accordion-button collapsed fw-semibold text-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSecurity" aria-expanded="false" aria-controls="collapseSecurity">
+                                        <i class="bi bi-shield-lock me-2 text-primary"></i>계정 보안 관리 (이메일 / 비밀번호 변경)
+                                    </button>
+                                </h2>
+                                <div id="collapseSecurity" class="accordion-collapse collapse" aria-labelledby="headingSecurity" data-bs-parent="#profileSecurityAccordion">
+                                    <div class="accordion-body bg-light bg-opacity-50">
+                                        
+                                        <!-- 이메일 수정 폼 -->
+                                        <form method="POST" action="{{ url_for('auth.update_profile') }}" class="mb-4 pb-3 border-bottom">
+                                            <input type="hidden" name="action" value="update_email">
+                                            <div class="mb-2">
+                                                <label for="editEmail" class="form-label fw-semibold small">이메일 주소 변경</label>
+                                                <div class="input-group">
+                                                    <input type="email" class="form-control" id="editEmail" name="email" placeholder="새로운 이메일 주소 입력" required>
+                                                    <button type="submit" class="btn btn-warning px-3">인증 메일 전송</button>
+                                                </div>
+                                                <div class="form-text small text-danger">
+                                                    <i class="bi bi-info-circle me-1"></i>이메일 변경 시 입력하신 새 이메일 주소로 인증 메일이 발송되며, 메일함에서 인증을 완료해야 변경이 완료됩니다.
+                                                </div>
+                                            </div>
+                                        </form>
+
+                                        <!-- 비밀번호 변경 폼 -->
+                                        <form method="POST" action="{{ url_for('auth.update_profile') }}">
+                                            <input type="hidden" name="action" value="update_password">
+                                            <div class="mb-3">
+                                                <label for="currentPassword" class="form-label fw-semibold small">현재 비밀번호 <span class="text-danger">*</span></label>
+                                                <input type="password" class="form-control" id="currentPassword" name="current_password" placeholder="현재 사용 중인 비밀번호" required>
+                                            </div>
+
+                                            <div class="mb-3">
+                                                <label for="newPassword" class="form-label fw-semibold small">새 비밀번호 <span class="text-danger">*</span></label>
+                                                <input type="password" class="form-control" id="newPassword" name="new_password" placeholder="영문 대문자, 특수문자 포함 8자 이상" minlength="8" required>
+                                                <div class="mt-2 p-2 bg-white rounded-2 border">
+                                                    <div class="small fw-semibold text-muted mb-1">비밀번호 충족 조건:</div>
+                                                    <ul class="list-unstyled mb-0 small">
+                                                        <li id="mypage-rule-len" class="text-danger"><i class="bi bi-x-circle me-1"></i>최소 8자 이상</li>
+                                                        <li id="mypage-rule-upper" class="text-danger"><i class="bi bi-x-circle me-1"></i>영문 대문자 1개 이상 포함</li>
+                                                        <li id="mypage-rule-special" class="text-danger"><i class="bi bi-x-circle me-1"></i>특수문자(!@#$%^&* 등) 1개 이상 포함</li>
+                                                    </ul>
+                                                </div>
+                                            </div>
+
+                                            <div class="mb-3">
+                                                <label for="newPasswordConfirm" class="form-label fw-semibold small">새 비밀번호 확인 <span class="text-danger">*</span></label>
+                                                <input type="password" class="form-control" id="newPasswordConfirm" name="new_password_confirm" placeholder="새 비밀번호 재입력" minlength="8" required>
+                                                <div id="mypagePwMatchFeedback" class="form-text mt-1 small"></div>
+                                            </div>
+
+                                            <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold rounded-3">
+                                                비밀번호 변경하기
+                                            </button>
+                                        </form>
+
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 탭 2: 주문 내역 -->
+                    <div class="tab-pane fade" id="orders-tab-pane" role="tabpanel" aria-labelledby="orders-tab" tabindex="0">
+                        <div class="text-center py-5">
+                            <div class="rounded-circle bg-light d-inline-flex align-items-center justify-content-center p-4 mb-3 text-muted" style="width: 80px; height: 80px;">
+                                <i class="bi bi-bag-x fs-1"></i>
+                            </div>
+                            <h6 class="fw-bold mb-2">아직 주문 내역이 없습니다</h6>
+                            <p class="text-muted small mb-4">다양한 상품을 둘러보고 마음에 드는 상품을 주문해 보세요.</p>
+                            <a href="{{ url_for('main.products') }}" class="btn btn-outline-dark btn-sm px-3 py-2 rounded-3">
+                                <i class="bi bi-grid me-1"></i>상품 둘러보기
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- 탭 3: 환불 내역 -->
+                    <div class="tab-pane fade" id="refunds-tab-pane" role="tabpanel" aria-labelledby="refunds-tab" tabindex="0">
+                        <div class="text-center py-5">
+                            <div class="rounded-circle bg-light d-inline-flex align-items-center justify-content-center p-4 mb-3 text-muted" style="width: 80px; height: 80px;">
+                                <i class="bi bi-arrow-counterclockwise fs-1"></i>
+                            </div>
+                            <h6 class="fw-bold mb-2">아직 환불 내역이 없습니다</h6>
+                            <p class="text-muted small mb-0">진행 중이거나 완료된 취소/환불 내역이 없습니다.</p>
                         </div>
                     </div>
                 </div>
 
-                <div class="d-flex gap-2 mb-3">
+                <div class="d-flex gap-2 mb-3 mt-4 border-top pt-4">
                     <a href="{{ url_for('cart.view_cart') }}" class="btn btn-outline-primary flex-grow-1 py-2 rounded-3">
                         <i class="bi bi-cart3 me-1"></i>장바구니 보기
                     </a>
@@ -154,7 +223,7 @@
                     </a>
                 </div>
 
-                <div class="border-top pt-3 text-end">
+                <div class="text-end">
                     <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteAccountModal">
                         <i class="bi bi-person-x me-1"></i>회원 탈퇴
                     </button>
@@ -195,21 +264,21 @@ document.addEventListener("DOMContentLoaded", () => {
     const editNickname = document.getElementById("editNickname");
     const btnCheck = document.getElementById("btnCheckMypageNickname");
     const feedback = document.getElementById("mypageNicknameFeedback");
-    const formUpdateNickname = document.getElementById("formUpdateNickname");
-    const btnSubmitNickname = document.getElementById("btnSubmitNickname");
+    const formUpdateProfileAll = document.getElementById("formUpdateProfileAll");
+    const btnSubmitProfile = document.getElementById("btnSubmitProfile");
 
     const originalNickname = editNickname ? editNickname.getAttribute("data-original-nickname") : "";
     let isNicknameChecked = false;
     let lastCheckedNickname = "";
 
     function updateSubmitButtonState() {
-        if (!editNickname) return;
+        if (!editNickname || !btnSubmitProfile) return;
         const currentVal = editNickname.value.trim();
         // 기존 닉네임과 동일하거나 중복확인을 통과한 경우에만 제출 가능
         if (currentVal && (currentVal === originalNickname || (isNicknameChecked && currentVal === lastCheckedNickname))) {
-            btnSubmitNickname.disabled = false;
+            btnSubmitProfile.disabled = false;
         } else {
-            btnSubmitNickname.disabled = true;
+            btnSubmitProfile.disabled = true;
         }
     }
 
@@ -256,7 +325,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 .then(res => res.json())
                 .then(data => {
                     if (data.available) {
-                        feedback.textContent = "✓ 사용 가능한 닉네임입니다. [닉네임 변경] 버튼을 눌러 저장해 주세요.";
+                        feedback.textContent = "✓ 사용 가능한 닉네임입니다.";
                         feedback.className = "form-text small text-success fw-semibold";
                         isNicknameChecked = true;
                         lastCheckedNickname = nickname;
@@ -277,8 +346,8 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    if (formUpdateNickname) {
-        formUpdateNickname.addEventListener("submit", (e) => {
+    if (formUpdateProfileAll && editNickname) {
+        formUpdateProfileAll.addEventListener("submit", (e) => {
             const currentVal = editNickname.value.trim();
             if (currentVal !== originalNickname && (!isNicknameChecked || currentVal !== lastCheckedNickname)) {
                 e.preventDefault();
@@ -318,6 +387,42 @@ document.addEventListener("DOMContentLoaded", () => {
             } else {
                 mypageRuleUpper.className = "text-danger";
                 mypageRuleUpper.innerHTML = '<i class="bi bi-x-circle me-1"></i>영문 대문자 1개 이상 포함';
+            }
+
+            // 특수문자 포함
+            if (specialRegex.test(val)) {
+                mypageRuleSpecial.className = "text-success";
+                mypageRuleSpecial.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>특수문자(!@#$%^&* 등) 1개 이상 포함';
+            } else {
+                mypageRuleSpecial.className = "text-danger";
+                mypageRuleSpecial.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>특수문자(!@#$%^&* 등) 1개 이상 포함';
+            }
+
+            checkMypagePwMatch();
+        }
+
+        function checkMypagePwMatch() {
+            const p1 = newPwInput.value;
+            const p2 = newPwConfirm.value;
+            if (!p2) {
+                mypagePwMatchFeedback.textContent = "";
+                return;
+            }
+            if (p1 === p2) {
+                mypagePwMatchFeedback.textContent = "✓ 새 비밀번호가 일치합니다.";
+                mypagePwMatchFeedback.className = "form-text mt-1 small text-success fw-semibold";
+            } else {
+                mypagePwMatchFeedback.textContent = "✗ 새 비밀번호가 일치하지 않습니다.";
+                mypagePwMatchFeedback.className = "form-text mt-1 small text-danger fw-semibold";
+            }
+        }
+
+        newPwInput.addEventListener("input", checkMypagePwRules);
+        newPwConfirm.addEventListener("input", checkMypagePwMatch);
+    }
+});
+</script>
+{% endblock %}
             }
 
             // 특수문자 포함
