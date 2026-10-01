@@ -12,19 +12,120 @@ cart_bp = Blueprint("cart", __name__, url_prefix="/cart")
 def view_cart():
     """
     장바구니 페이지:
-    세션에 저장된 품목 목록을 렌더링합니다.
+    DB(carts 테이블)에서 현재 사용자의 장바구니 품목을 조회합니다.
+    - 미로그인 시 로그인 페이지로 리다이렉트
+    - 로그인 사용자의 cart_id, product 정보 포함하여 렌더링
     """
-    cart = session.get("cart", {})
-    items = list(cart.values())
-    total_amount = sum(item["price"] * item["quantity"] for item in items)
-    total_count = sum(item["quantity"] for item in items)
+    # 1. 로그인 확인
+    user = session.get("user")
+    if not user or not user.get("id"):
+        return redirect(url_for("auth.login", next=url_for("cart.view_cart")))
 
-    return render_template(
-        "cart/cart.html",
-        items=items,
-        total_amount=total_amount,
-        total_count=total_count
-    )
+    user_id = user["id"]
+    supabase = get_supabase_client()
+
+    if not supabase:
+        flash("데이터베이스 연결에 실패했습니다.", "error")
+        return redirect(url_for("main.index"))
+
+    try:
+        # 2. 현재 사용자의 장바구니 아이템 조회
+        cart_res = (
+            supabase.table("carts")
+            .select("id, product_id, option_id, quantity")
+            .eq("user_id", user_id)
+            .order("created_at", desc=False)
+            .execute()
+        )
+
+        if not cart_res.data:
+            return render_template(
+                "cart/cart.html",
+                items=[],
+                total_amount=0,
+                total_count=0
+            )
+
+        cart_items = cart_res.data
+        items = []
+        total_amount = 0
+        total_count = 0
+
+        # 3. 각 cart_item에 대해 product 및 option 정보 조회
+        for cart_item in cart_items:
+            try:
+                product_id = cart_item["product_id"]
+                option_id = cart_item["option_id"]
+                quantity = cart_item["quantity"]
+
+                # product 정보 조회
+                prod_res = (
+                    supabase.table("products")
+                    .select("id, name, price, sale_price, product_images(image_url, is_primary)")
+                    .eq("id", product_id)
+                    .single()
+                    .execute()
+                )
+
+                if not prod_res.data:
+                    logger.warning(f"[장바구니] 상품 조회 실패: {product_id}")
+                    continue
+
+                product = prod_res.data
+
+                # option 정보 조회 (color, size, additional_price 등)
+                opt_res = (
+                    supabase.table("product_options")
+                    .select("id, color, size, stock, stock_quantity, additional_price")
+                    .eq("id", option_id)
+                    .single()
+                    .execute()
+                )
+
+                option = opt_res.data if opt_res.data else {}
+
+                # 가격 계산
+                raw_price = product.get("sale_price") if product.get("sale_price") is not None else product.get("price", 0)
+                unit_price = int(float(raw_price or 0)) + int(float(option.get("additional_price") or 0))
+
+                # 썸네일 이미지
+                images = product.get("product_images") or []
+                primary_img = next((img for img in images if img.get("is_primary")), None)
+                thumbnail_url = primary_img.get("image_url") if primary_img else (images[0].get("image_url") if images else "https://picsum.photos/600/800")
+
+                # item 구성
+                item = {
+                    "id": cart_item["id"],  # cart_id (DB pk)
+                    "product_id": product_id,
+                    "option_id": option_id,
+                    "name": product.get("name"),
+                    "color": option.get("color"),
+                    "size": option.get("size"),
+                    "price": unit_price,
+                    "thumbnail_url": thumbnail_url,
+                    "quantity": quantity,
+                    "key": cart_item["id"]  # 호환성 유지
+                }
+
+                items.append(item)
+                total_amount += unit_price * quantity
+                total_count += quantity
+
+            except Exception as e:
+                logger.warning(f"[장바구니 항목 처리 오류] cart_item={cart_item}, error={e}")
+                continue
+
+        return render_template(
+            "cart/cart.html",
+            items=items,
+            total_amount=total_amount,
+            total_count=total_count
+        )
+
+    except Exception as e:
+        logger.error(f"[장바구니 조회 오류] 예외 발생: {e}", exc_info=True)
+        flash("장바구니 조회 중 오류가 발생했습니다.", "error")
+        return redirect(url_for("main.index"))
 
 
 @cart_bp.route("/add", methods=["POST"])
@@ -260,6 +361,60 @@ def get_cart_count():
     cart = session.get("cart", {})
     total_count = sum(item["quantity"] for item in cart.values())
     return jsonify({"cart_count": total_count})
+
+
+@cart_bp.route("/<int:cart_id>", methods=["DELETE"])
+def delete_cart_item(cart_id):
+    """
+    장바구니 아이템 삭제 (DB 기반):
+    1. 로그인 확인
+    2. 본인 소유의 장바구니 아이템 확인
+    3. carts 테이블에서 DELETE
+    4. 성공 시 JSON: {"success": True, "message": "장바구니에서 삭제되었습니다."}
+    """
+    # 1. 로그인 확인
+    user = session.get("user")
+    if not user or not user.get("id"):
+        return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
+
+    user_id = user["id"]
+
+    supabase = get_supabase_client()
+    admin_supabase = get_supabase_admin_client() or supabase
+
+    if not supabase:
+        return jsonify({"success": False, "message": "데이터베이스 연결에 실패했습니다."}), 500
+
+    try:
+        # 2. carts 테이블에서 해당 cart_id 조회
+        cart_res = (
+            admin_supabase.table("carts")
+            .select("id, user_id")
+            .eq("id", cart_id)
+            .execute()
+        )
+
+        if not cart_res.data or len(cart_res.data) == 0:
+            return jsonify({"success": False, "message": "존재하지 않는 장바구니 아이템입니다."}), 404
+
+        cart_item = cart_res.data[0]
+
+        # 3. 본인 소유 확인 (다른 사용자의 cart_id 접근 차단)
+        if str(cart_item["user_id"]) != str(user_id):
+            return jsonify({"success": False, "message": "접근 권한이 없습니다."}), 403
+
+        # 4. carts 테이블에서 DELETE
+        admin_supabase.table("carts").delete().eq("id", cart_id).execute()
+
+        # 5. 성공 시 JSON 반환
+        return jsonify({
+            "success": True,
+            "message": "장바구니에서 삭제되었습니다."
+        })
+
+    except Exception as e:
+        logger.error(f"[장바구니 삭제 오류] 예외 발생: {e}", exc_info=True)
+        return jsonify({"success": False, "message": "장바구니 삭제 중 오류가 발생했습니다."}), 500
 
 
 @cart_bp.route("/<int:cart_id>", methods=["PATCH"])

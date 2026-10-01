@@ -13,154 +13,229 @@
         </a>
     </div>
 
-    {% if items %}
-    <div class="row g-4">
-        <!-- 장바구니 상품 목록 -->
-        <div class="col-lg-8">
-            <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
-                <div class="table-responsive">
-                    <table class="table align-middle mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th scope="col" style="min-width: 250px;">상품 정보</th>
-                                <th scope="col" class="text-center" style="width: 120px;">단가</th>
-                                <th scope="col" class="text-center" style="width: 150px;">수량</th>
-                                <th scope="col" class="text-end" style="width: 120px;">합계</th>
-                                <th scope="col" class="text-center" style="width: 60px;">삭제</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for item in items %}
-                            {% set item_identifier = item.key or item.product_id %}
-                            <tr id="cart-row-{{ item_identifier }}">
-                                <td>
-                                    <div class="d-flex align-items-center gap-3">
-                                        <a href="{{ url_for('main.product_detail', product_id=item.product_id) }}">
-                                            <img src="{{ item.thumbnail_url }}" alt="{{ item.name }}" class="rounded-3 object-fit-cover" style="width: 70px; height: 70px;" onerror="this.onerror=null; this.src='https://picsum.photos/600/800';">
-                                        </a>
-                                        <div>
-                                            <h6 class="mb-1 fw-bold">
-                                                <a href="{{ url_for('main.product_detail', product_id=item.product_id) }}" class="text-dark text-decoration-none">
-                                                    {{ item.name }}
-                                                </a>
-                                            </h6>
-                                            {% if item.color or item.size %}
-                                            <div class="small text-muted">
-                                                <span class="badge bg-light text-secondary border">
-                                                    {% if item.color %}색상: {{ item.color }}{% endif %}
-                                                    {% if item.color and item.size %} / {% endif %}
-                                                    {% if item.size %}사이즈: {{ item.size }}{% endif %}
-                                                </span>
+    <div id="cart-content">
+        {% if items %}
+        <div class="row g-4">
+            <!-- 장바구니 상품 목록 -->
+            <div class="col-lg-8">
+                <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col" style="min-width: 250px;">상품 정보</th>
+                                    <th scope="col" class="text-center" style="width: 120px;">단가</th>
+                                    <th scope="col" class="text-center" style="width: 150px;">수량</th>
+                                    <th scope="col" class="text-end" style="width: 120px;">합계</th>
+                                    <th scope="col" class="text-center" style="width: 60px;">삭제</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cart-items-tbody">
+                                {% for item in items %}
+                                <tr id="cart-row-{{ item.id }}">
+                                    <td>
+                                        <div class="d-flex align-items-center gap-3">
+                                            <a href="{{ url_for('main.product_detail', product_id=item.product_id) }}">
+                                                <img src="{{ item.thumbnail_url }}" alt="{{ item.name }}" class="rounded-3 object-fit-cover" style="width: 70px; height: 70px;" onerror="this.onerror=null; this.src='https://picsum.photos/600/800';">
+                                            </a>
+                                            <div>
+                                                <h6 class="mb-1 fw-bold">
+                                                    <a href="{{ url_for('main.product_detail', product_id=item.product_id) }}" class="text-dark text-decoration-none">
+                                                        {{ item.name }}
+                                                    </a>
+                                                </h6>
+                                                {% if item.color or item.size %}
+                                                <div class="small text-muted">
+                                                    <span class="badge bg-light text-secondary border">
+                                                        {% if item.color %}색상: {{ item.color }}{% endif %}
+                                                        {% if item.color and item.size %} / {% endif %}
+                                                        {% if item.size %}사이즈: {{ item.size }}{% endif %}
+                                                    </span>
+                                                </div>
+                                                {% endif %}
                                             </div>
-                                            {% endif %}
                                         </div>
-                                    </div>
-                                </td>
-                                <td class="text-center text-muted">
-                                    {{ "{:,}".format(item.price) }}원
-                                </td>
-                                <td>
-                                    <div class="input-group input-group-sm justify-content-center mx-auto" style="max-width: 110px;">
-                                        <button class="btn btn-outline-secondary btn-decrease" data-item-key="{{ item_identifier }}" type="button">-</button>
-                                        <input type="number" class="form-control text-center quantity-input" value="{{ item.quantity }}" min="1" max="99" data-item-key="{{ item_identifier }}" data-price="{{ item.price }}">
-                                        <button class="btn btn-outline-secondary btn-increase" data-item-key="{{ item_identifier }}" type="button">+</button>
-                                    </div>
-                                </td>
-                                <td class="text-end fw-bold text-primary item-total-price" id="item-total-{{ item_identifier }}">
-                                    {{ "{:,}".format(item.price * item.quantity) }}원
-                                </td>
-                                <td class="text-center">
-                                    <button class="btn btn-sm btn-link text-danger p-0 btn-remove" data-item-key="{{ item_identifier }}" title="품목 삭제">
-                                        <i class="bi bi-trash3 fs-5"></i>
-                                    </button>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                                    </td>
+                                    <td class="text-center text-muted">
+                                        {{ "{:,}".format(item.price) }}원
+                                    </td>
+                                    <td>
+                                        <div class="input-group input-group-sm justify-content-center mx-auto" style="max-width: 110px;">
+                                            <button class="btn btn-outline-secondary btn-decrease" data-cart-id="{{ item.id }}" type="button">-</button>
+                                            <input type="number" class="form-control text-center quantity-input" value="{{ item.quantity }}" min="1" max="99" data-cart-id="{{ item.id }}" data-price="{{ item.price }}">
+                                            <button class="btn btn-outline-secondary btn-increase" data-cart-id="{{ item.id }}" type="button">+</button>
+                                        </div>
+                                    </td>
+                                    <td class="text-end fw-bold text-primary item-total-price" id="item-total-{{ item.id }}">
+                                        {{ "{:,}".format(item.price * item.quantity) }}원
+                                    </td>
+                                    <td class="text-center">
+                                        <button class="btn btn-sm btn-link text-danger p-0 btn-remove" data-cart-id="{{ item.id }}" data-product-name="{{ item.name }}" title="품목 삭제">
+                                            <i class="bi bi-trash3 fs-5"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <!-- 결제 요약 카드 -->
-        <div class="col-lg-4">
-            <div class="card border-0 shadow-sm rounded-4 p-4 sticky-top" style="top: 100px;">
-                <h5 class="fw-bold mb-4">주문 요약</h5>
-                <div class="d-flex justify-content-between mb-2">
-                    <span class="text-muted">총 품목 수</span>
-                    <span class="fw-semibold" id="summary-total-count">{{ total_count }}개</span>
+            <!-- 결제 요약 카드 -->
+            <div class="col-lg-4">
+                <div class="card border-0 shadow-sm rounded-4 p-4 sticky-top" style="top: 100px;">
+                    <h5 class="fw-bold mb-4">주문 요약</h5>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-muted">총 품목 수</span>
+                        <span class="fw-semibold" id="summary-total-count">{{ total_count }}개</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-muted">상품 금액</span>
+                        <span class="fw-semibold" id="summary-subtotal">{{ "{:,}".format(total_amount) }}원</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-3">
+                        <span class="text-muted">배송비</span>
+                        <span class="text-success fw-semibold">무료</span>
+                    </div>
+                    <hr>
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <span class="fs-5 fw-bold">총 결제 예정 금액</span>
+                        <span class="fs-4 fw-bold text-primary" id="summary-total-amount">{{ "{:,}".format(total_amount) }}원</span>
+                    </div>
+                    <a href="{{ url_for('cart.checkout') }}" class="btn btn-primary w-100 py-3 fw-bold rounded-3 shadow-sm text-center text-decoration-none">
+                        <i class="bi bi-credit-card me-2"></i>주문하기
+                    </a>
                 </div>
-                <div class="d-flex justify-content-between mb-2">
-                    <span class="text-muted">상품 금액</span>
-                    <span class="fw-semibold" id="summary-subtotal">{{ "{:,}".format(total_amount) }}원</span>
-                </div>
-                <div class="d-flex justify-content-between mb-3">
-                    <span class="text-muted">배송비</span>
-                    <span class="text-success fw-semibold">무료</span>
-                </div>
-                <hr>
-                <div class="d-flex justify-content-between align-items-center mb-4">
-                    <span class="fs-5 fw-bold">총 결제 예정 금액</span>
-                    <span class="fs-4 fw-bold text-primary" id="summary-total-amount">{{ "{:,}".format(total_amount) }}원</span>
-                </div>
-                <a href="{{ url_for('cart.checkout') }}" class="btn btn-primary w-100 py-3 fw-bold rounded-3 shadow-sm text-center text-decoration-none">
-                    <i class="bi bi-credit-card me-2"></i>주문하기
-                </a>
+            </div>
+        </div>
+        {% else %}
+        <!-- 장바구니가 비어 있는 경우 -->
+        <div class="text-center py-5 my-5">
+            <i class="bi bi-cart-x fs-1 text-muted mb-3 d-block" style="font-size: 4rem !important;"></i>
+            <h4 class="fw-bold text-secondary mb-2">장바구니가 비어 있습니다</h4>
+            <p class="text-muted mb-4">원하는 상품을 찾아 장바구니에 담아보세요!</p>
+            <a href="{{ url_for('main.index') }}#products" class="btn btn-primary px-4 py-2 fw-semibold rounded-pill">
+                쇼핑하러 가기
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 삭제 확인 모달 -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0">
+                <h5 class="modal-title fw-bold" id="deleteConfirmLabel">
+                    <i class="bi bi-exclamation-circle text-warning me-2"></i>삭제 확인
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-0">
+                    <span id="deleteProductName" class="fw-bold text-primary"></span>을(를)
+                    <br />
+                    장바구니에서 삭제하시겠습니까?
+                </p>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">
+                    <i class="bi bi-trash3 me-1"></i>삭제
+                </button>
             </div>
         </div>
     </div>
-    {% else %}
-    <!-- 장바구니가 비어 있는 경우 -->
-    <div class="text-center py-5 my-5">
-        <i class="bi bi-cart-x fs-1 text-muted mb-3 d-block" style="font-size: 4rem !important;"></i>
-        <h4 class="fw-bold text-secondary mb-2">장바구니가 비어 있습니다</h4>
-        <p class="text-muted mb-4">원하는 상품을 찾아 장바구니에 담아보세요!</p>
-        <a href="{{ url_for('main.index') }}#products" class="btn btn-primary px-4 py-2 fw-semibold rounded-pill">
-            쇼핑하러 가기
-        </a>
-    </div>
-    {% endif %}
 </div>
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-    // 수량 변경 함수
-    function updateItem(itemKey, quantity) {
-        fetch("{{ url_for('cart.update_quantity') }}", {
-            method: "POST",
+    let deleteConfirmModal;
+    let pendingCartId = null;
+
+    // 모달 초기화
+    const modalElement = document.getElementById("deleteConfirmModal");
+    if (modalElement) {
+        deleteConfirmModal = new bootstrap.Modal(modalElement);
+    }
+
+    // 수량 변경 함수 (PATCH /cart/<cart_id>)
+    function updateCartQuantity(cartId, quantity) {
+        fetch(`/cart/${cartId}`, {
+            method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ item_key: itemKey, quantity: quantity })
+            body: JSON.stringify({ quantity: quantity })
         })
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                location.reload();
+                // 해당 행의 합계 업데이트
+                const row = document.getElementById(`cart-row-${cartId}`);
+                if (row) {
+                    const unitPrice = data.subtotal / quantity;
+                    const totalEl = document.getElementById(`item-total-${cartId}`);
+                    if (totalEl) {
+                        totalEl.textContent = `${data.subtotal.toLocaleString()}원`;
+                    }
+                }
+                updateSummary();
+            } else {
+                alert(data.message || "수량 변경에 실패했습니다.");
+            }
+        })
+        .catch(err => {
+            console.error("수량 변경 오류:", err);
+            alert("수량 변경 중 오류가 발생했습니다.");
+        });
+    }
+
+    // 요약 업데이트 함수
+    function updateSummary() {
+        let totalAmount = 0;
+        let totalCount = 0;
+
+        document.querySelectorAll("#cart-items-tbody tr").forEach(row => {
+            const cartId = row.id.replace("cart-row-", "");
+            const quantityInput = row.querySelector(".quantity-input");
+            const priceStr = quantityInput?.dataset.price;
+            const quantity = parseInt(quantityInput?.value) || 0;
+
+            if (priceStr && quantity > 0) {
+                const price = parseInt(priceStr);
+                totalAmount += price * quantity;
+                totalCount += quantity;
             }
         });
+
+        document.getElementById("summary-total-count").textContent = `${totalCount}개`;
+        document.getElementById("summary-subtotal").textContent = `${totalAmount.toLocaleString()}원`;
+        document.getElementById("summary-total-amount").textContent = `${totalAmount.toLocaleString()}원`;
     }
 
     // 증가 버튼
     document.querySelectorAll(".btn-increase").forEach(btn => {
         btn.addEventListener("click", () => {
-            const key = btn.dataset.itemKey;
-            const input = document.querySelector(`.quantity-input[data-item-key="${key}"]`);
+            const cartId = btn.dataset.cartId;
+            const input = document.querySelector(`.quantity-input[data-cart-id="${cartId}"]`);
             let val = parseInt(input.value) || 1;
-            val += 1;
+            val = Math.min(val + 1, 99);
             input.value = val;
-            updateItem(key, val);
+            updateCartQuantity(cartId, val);
         });
     });
 
     // 감소 버튼
     document.querySelectorAll(".btn-decrease").forEach(btn => {
         btn.addEventListener("click", () => {
-            const key = btn.dataset.itemKey;
-            const input = document.querySelector(`.quantity-input[data-item-key="${key}"]`);
+            const cartId = btn.dataset.cartId;
+            const input = document.querySelector(`.quantity-input[data-cart-id="${cartId}"]`);
             let val = parseInt(input.value) || 1;
             if (val > 1) {
                 val -= 1;
                 input.value = val;
-                updateItem(key, val);
+                updateCartQuantity(cartId, val);
             }
         });
     });
@@ -168,32 +243,92 @@ document.addEventListener("DOMContentLoaded", () => {
     // 입력 필드 직접 변경
     document.querySelectorAll(".quantity-input").forEach(input => {
         input.addEventListener("change", () => {
-            const key = input.dataset.itemKey;
+            const cartId = input.dataset.cartId;
             let val = parseInt(input.value) || 1;
             if (val < 1) val = 1;
+            if (val > 99) val = 99;
             input.value = val;
-            updateItem(key, val);
+            updateCartQuantity(cartId, val);
         });
     });
 
-    // 품목 삭제
+    // 삭제 버튼 클릭
     document.querySelectorAll(".btn-remove").forEach(btn => {
         btn.addEventListener("click", () => {
-            if (!confirm("이 상품을 장바구니에서 삭제하시겠습니까?")) return;
-            const key = btn.dataset.itemKey;
-            fetch("{{ url_for('cart.remove_from_cart') }}", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ item_key: key })
+            pendingCartId = btn.dataset.cartId;
+            const productName = btn.dataset.productName || "이 상품";
+            document.getElementById("deleteProductName").textContent = productName;
+            deleteConfirmModal?.show();
+        });
+    });
+
+    // 삭제 확인 버튼
+    const confirmDeleteBtn = document.getElementById("confirmDeleteBtn");
+    if (confirmDeleteBtn) {
+        confirmDeleteBtn.addEventListener("click", () => {
+            if (!pendingCartId) return;
+
+            const cartId = pendingCartId;
+            deleteConfirmModal?.hide();
+
+            // DELETE /cart/<cart_id> 요청
+            fetch(`/cart/${cartId}`, {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" }
             })
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    location.reload();
+                    // 해당 행 제거
+                    const row = document.getElementById(`cart-row-${cartId}`);
+                    if (row) {
+                        row.remove();
+                    }
+
+                    // 요약 업데이트
+                    updateSummary();
+
+                    // 장바구니가 비었는지 확인
+                    const remainingRows = document.querySelectorAll("#cart-items-tbody tr");
+                    if (remainingRows.length === 0) {
+                        // 장바구니 비었을 때
+                        const cartContent = document.getElementById("cart-content");
+                        if (cartContent) {
+                            cartContent.innerHTML = `
+                                <div class="text-center py-5 my-5">
+                                    <i class="bi bi-cart-x fs-1 text-muted mb-3 d-block" style="font-size: 4rem !important;"></i>
+                                    <h4 class="fw-bold text-secondary mb-2">장바구니가 비어 있습니다</h4>
+                                    <p class="text-muted mb-4">원하는 상품을 찾아 장바구니에 담아보세요!</p>
+                                    <a href="{{ url_for('main.index') }}#products" class="btn btn-primary px-4 py-2 fw-semibold rounded-pill">
+                                        쇼핑하러 가기
+                                    </a>
+                                </div>
+                            `;
+                        }
+                    }
+
+                    // 성공 메시지
+                    const alertDiv = document.createElement("div");
+                    alertDiv.className = "alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3";
+                    alertDiv.role = "alert";
+                    alertDiv.innerHTML = `
+                        <i class="bi bi-check-circle me-2"></i>장바구니에서 삭제되었습니다.
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    `;
+                    document.body.insertBefore(alertDiv, document.body.firstChild);
+                    setTimeout(() => alertDiv.remove(), 3000);
+                } else {
+                    alert(data.message || "삭제에 실패했습니다.");
                 }
+            })
+            .catch(err => {
+                console.error("삭제 오류:", err);
+                alert("삭제 중 오류가 발생했습니다.");
             });
+
+            pendingCartId = null;
         });
-    });
+    }
 });
 </script>
 {% endblock %}
