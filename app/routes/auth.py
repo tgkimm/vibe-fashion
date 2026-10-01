@@ -6,7 +6,7 @@ import secrets
 import urllib.parse
 import urllib.request
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
-from app.utils import get_supabase_client, get_supabase_admin_client, extract_display_name, extract_real_name
+from app.utils import get_supabase_client, get_supabase_admin_client, extract_display_name, extract_real_name, save_auth_session
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
@@ -213,7 +213,7 @@ def login():
                     "real_name": real_name or display_name,
                 }
                 if auth_response.session and getattr(auth_response.session, "access_token", None):
-                    session["access_token"] = auth_response.session.access_token
+                    save_auth_session(auth_response.session)
                 session.permanent = True
 
                 if next_url and next_url.startswith("/"):
@@ -680,7 +680,7 @@ def confirm():
                 "real_name": real_name or display_name,
             }
             if auth_response.session and getattr(auth_response.session, "access_token", None):
-                session["access_token"] = auth_response.session.access_token
+                save_auth_session(auth_response.session)
             session.permanent = True
 
             # 비밀번호 재설정 확인 링크인 경우 새 비밀번호 설정 페이지로 이동
@@ -832,7 +832,7 @@ def reset_password():
                     "real_name": extract_real_name(auth_response.user),
                 }
                 if auth_response.session and getattr(auth_response.session, "access_token", None):
-                    session["access_token"] = auth_response.session.access_token
+                    save_auth_session(auth_response.session)
         except Exception as e:
             logger.warning(f"[비밀번호 재설정 토큰 처리 경고] {e}")
 
@@ -868,7 +868,7 @@ def reset_password():
                         "real_name": extract_real_name(auth_response.user),
                     }
                     if auth_response.session and getattr(auth_response.session, "access_token", None):
-                        session["access_token"] = auth_response.session.access_token
+                        save_auth_session(auth_response.session)
             except Exception as e:
                 logger.error(f"[이메일 인증코드 검증 실패] {e}", exc_info=True)
                 return redirect(url_for("auth.reset_password", error="invalid_token", email=email))

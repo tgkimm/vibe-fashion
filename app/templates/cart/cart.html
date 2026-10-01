@@ -285,6 +285,53 @@ function handleDeleteConfirm(event) {
     pendingDeleteCartId = null;
 }
 
+// 요약 업데이트 (삭제/수량 변경 후 호출되므로 전역에 정의)
+function updateSummary() {
+    // 장바구니가 비어 요약 카드가 없는 경우
+    if (!document.getElementById("summary-total-count")) return;
+
+    let totalAmount = 0;
+    let totalCount = 0;
+    let hasOutOfStock = false;
+
+    document.querySelectorAll("#cart-items-tbody tr").forEach(row => {
+        const quantityInput = row.querySelector(".quantity-input");
+        const priceStr = quantityInput?.dataset.price;
+        const quantity = parseInt(quantityInput?.value) || 0;
+
+        if (row.dataset.isOutOfStock === "true") {
+            hasOutOfStock = true;
+        }
+
+        if (priceStr && quantity > 0) {
+            totalAmount += parseInt(priceStr) * quantity;
+            totalCount += quantity;
+        }
+    });
+
+    // 배송비 계산 (50,000원 미만 3,000원, 이상 무료)
+    const shippingCost = totalAmount < 50000 ? 3000 : 0;
+    const finalTotal = totalAmount + shippingCost;
+
+    document.getElementById("summary-total-count").textContent = `${totalCount}개`;
+    document.getElementById("summary-subtotal").textContent = `${totalAmount.toLocaleString()}원`;
+    document.getElementById("shipping-amount").textContent = `${shippingCost.toLocaleString()}`;
+    document.getElementById("summary-total-amount").textContent = `${finalTotal.toLocaleString()}원`;
+
+    // 품절 상품이 있으면 주문 버튼 비활성화
+    const checkoutBtn = document.getElementById("checkout-btn");
+    const alertDiv = document.getElementById("out-of-stock-alert");
+    if (hasOutOfStock) {
+        checkoutBtn.classList.add("disabled");
+        checkoutBtn.style.pointerEvents = "none";
+        alertDiv.classList.remove("d-none");
+    } else {
+        checkoutBtn.classList.remove("disabled");
+        checkoutBtn.style.pointerEvents = "auto";
+        alertDiv.classList.add("d-none");
+    }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     // 모달 초기화
     const modalElement = document.getElementById("deleteConfirmModal");
@@ -326,52 +373,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // 요약 업데이트 함수
-    function updateSummary() {
-        let totalAmount = 0;
-        let totalCount = 0;
-        let hasOutOfStock = false;
-
-        document.querySelectorAll("#cart-items-tbody tr").forEach(row => {
-            const cartId = row.id.replace("cart-row-", "");
-            const quantityInput = row.querySelector(".quantity-input");
-            const priceStr = quantityInput?.dataset.price;
-            const quantity = parseInt(quantityInput?.value) || 0;
-            const isOutOfStock = row.dataset.isOutOfStock === "true";
-
-            if (isOutOfStock) {
-                hasOutOfStock = true;
-            }
-
-            if (priceStr && quantity > 0) {
-                const price = parseInt(priceStr);
-                totalAmount += price * quantity;
-                totalCount += quantity;
-            }
-        });
-
-        // 배송비 계산 (50,000원 미만 3,000원, 이상 무료)
-        const shippingCost = totalAmount < 50000 ? 3000 : 0;
-        const finalTotal = totalAmount + shippingCost;
-
-        document.getElementById("summary-total-count").textContent = `${totalCount}개`;
-        document.getElementById("summary-subtotal").textContent = `${totalAmount.toLocaleString()}원`;
-        document.getElementById("shipping-amount").textContent = `${shippingCost.toLocaleString()}`;
-        document.getElementById("summary-total-amount").textContent = `${finalTotal.toLocaleString()}원`;
-
-        // 품절 상품이 있으면 주문 버튼 비활성화
-        const checkoutBtn = document.getElementById("checkout-btn");
-        const alertDiv = document.getElementById("out-of-stock-alert");
-        if (hasOutOfStock) {
-            checkoutBtn.classList.add("disabled");
-            checkoutBtn.style.pointerEvents = "none";
-            alertDiv.classList.remove("d-none");
-        } else {
-            checkoutBtn.classList.remove("disabled");
-            checkoutBtn.style.pointerEvents = "auto";
-            alertDiv.classList.add("d-none");
-        }
-    }
+    // 요약 업데이트는 전역 updateSummary() 사용
 
     // 증가 버튼
     document.querySelectorAll(".btn-increase").forEach(btn => {

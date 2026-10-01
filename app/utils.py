@@ -4,11 +4,64 @@
 - 사이트 URL 생성
 - 사용자 메타데이터 파싱 헬퍼
 """
+import base64
+import json
 import logging
 import os
+import time
+from flask import session
 from supabase import create_client, Client
 
 logger = logging.getLogger(__name__)
+
+
+def save_auth_session(supabase_session) -> None:
+    """Supabase 로그인 결과의 access/refresh 토큰을 Flask 세션에 저장합니다."""
+    session["access_token"] = supabase_session.access_token
+    refresh_token = getattr(supabase_session, "refresh_token", None)
+    if refresh_token:
+        session["refresh_token"] = refresh_token
+
+
+def _jwt_expiry(token: str) -> float:
+    """JWT payload의 exp(초)를 반환합니다. 해석 실패 시 0 (만료로 간주)."""
+    try:
+        payload = token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        return float(json.loads(base64.urlsafe_b64decode(payload)).get("exp", 0))
+    except Exception:
+        return 0.0
+
+
+def get_user_supabase_client() -> Client | None:
+    """
+    로그인 사용자의 JWT를 적용한 Supabase 클라이언트를 반환합니다 (RLS의 auth.uid()가 본인으로 평가됨).
+    access_token이 만료(60초 이내)되면 refresh_token으로 갱신합니다.
+    """
+    client = get_supabase_client()
+    if not client:
+        return None
+
+    token = session.get("access_token")
+    if not token:
+        return client
+
+    refresh_token = session.get("refresh_token")
+    if refresh_token and _jwt_expiry(token) - time.time() < 60:
+        try:
+            refreshed = client.auth.refresh_session(refresh_token)
+            if refreshed and refreshed.session:
+                save_auth_session(refreshed.session)
+                token = refreshed.session.access_token
+        except Exception as e:
+            logger.warning(f"[토큰 갱신 실패] {e}")
+            session.pop("access_token", None)
+            session.pop("refresh_token", None)
+            return client
+
+    # postgrest 초기화 전에 지정해야 모든 요청에 사용자 JWT가 적용됨
+    client.options.headers["Authorization"] = f"Bearer {token}"
+    return client
 
 
 def get_supabase_client() -> Client | None:

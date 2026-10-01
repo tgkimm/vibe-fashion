@@ -1,21 +1,22 @@
 import logging
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, flash
-from app.utils import get_supabase_client
+from app.utils import get_user_supabase_client as _get_user_client
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
 
 cart_bp = Blueprint("cart", __name__, url_prefix="/cart")
 
+_AUTH_ERROR_CODES = {"42501", "PGRST301", "PGRST303"}
 
-def _get_user_client():
-    """로그인 사용자의 JWT를 적용한 Supabase 클라이언트 (RLS의 auth.uid()가 본인으로 평가됨)."""
-    client = get_supabase_client()
-    token = session.get("access_token")
-    if client and token:
-        # postgrest 초기화 전에 지정해야 모든 요청에 사용자 JWT가 적용됨
-        client.options.headers["Authorization"] = f"Bearer {token}"
-    return client
+
+def _is_auth_error(e):
+    """JWT 만료/누락으로 RLS에서 거부된 오류인지 판별."""
+    return str(getattr(e, "code", "")) in _AUTH_ERROR_CODES
+
+
+def _auth_expired_response():
+    return jsonify({"success": False, "message": "로그인이 만료되었습니다. 다시 로그인해 주세요."}), 401
 
 
 def _get_stock(option):
@@ -152,6 +153,9 @@ def view_cart():
 
     except Exception as e:
         logger.error(f"[장바구니 조회 오류] 예외 발생: {e}", exc_info=True)
+        if _is_auth_error(e):
+            flash("로그인이 만료되었습니다. 다시 로그인해 주세요.", "error")
+            return redirect(url_for("auth.login", next=url_for("cart.view_cart")))
         flash("장바구니 조회 중 오류가 발생했습니다.", "error")
         return redirect(url_for("main.index"))
 
@@ -336,6 +340,8 @@ def add_to_cart():
 
     except Exception as e:
         logger.error(f"[장바구니 추가 오류] 예외 발생: {e}", exc_info=True)
+        if _is_auth_error(e):
+            return _auth_expired_response()
         return jsonify({"success": False, "message": "장바구니에 담는 중 오류가 발생했습니다."}), 500
 
 
@@ -467,6 +473,8 @@ def delete_cart_item(cart_id):
 
     except Exception as e:
         logger.error(f"[장바구니 삭제 오류] 예외 발생: {e}", exc_info=True)
+        if _is_auth_error(e):
+            return _auth_expired_response()
         return jsonify({"success": False, "message": "장바구니 삭제 중 오류가 발생했습니다."}), 500
 
 
@@ -576,6 +584,8 @@ def update_cart_quantity(cart_id):
 
     except Exception as e:
         logger.error(f"[장바구니 수량 변경 오류] 예외 발생: {e}", exc_info=True)
+        if _is_auth_error(e):
+            return _auth_expired_response()
         return jsonify({"success": False, "message": "장바구니 수량 변경 중 오류가 발생했습니다."}), 500
 
 
