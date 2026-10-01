@@ -140,12 +140,22 @@ body {
     border-radius: 14px;
     overflow: hidden;
     background-color: #ffffff;
+    cursor: pointer;
 }
 
 /* 호버 시 그림자 대폭 강화 및 2% 확대 (scale 1.02) */
 .product-card:hover {
     transform: scale(1.02) translateY(-4px);
     box-shadow: 0 16px 32px rgba(26, 42, 74, 0.18) !important;
+}
+
+/* 카드 내 제목 호버 색상 변화 */
+.product-card .card-title a {
+    transition: color 0.2s ease;
+}
+
+.product-card:hover .card-title a {
+    color: var(--color-coral) !important;
 }
 
 /* 카드 이미지 래퍼 */
