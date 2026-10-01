@@ -309,14 +309,17 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // 삭제 확인 버튼 (이벤트 위임)
-    document.addEventListener("click", (e) => {
-        // 확인 버튼 (#confirmDeleteBtn)이 클릭된 경우
-        if (e.target.closest("#confirmDeleteBtn")) {
-            console.log(`[삭제 확인] 버튼 클릭됨`);
+    // 삭제 확인 버튼 - 직접 이벤트 리스너 등록
+    const confirmDeleteBtn = document.getElementById("confirmDeleteBtn");
+    if (confirmDeleteBtn) {
+        confirmDeleteBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log(`[삭제 확인] 버튼 클릭됨: pendingCartId=${pendingCartId}`);
             
             if (!pendingCartId) {
                 console.error("[삭제 확인] pendingCartId가 설정되지 않음");
+                alert("선택된 상품이 없습니다.");
                 return;
             }
 
@@ -378,6 +381,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     // 성공 메시지
                     const alertDiv = document.createElement("div");
                     alertDiv.className = "alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3";
+                    alertDiv.style.zIndex = "9999";
                     alertDiv.role = "alert";
                     alertDiv.innerHTML = `
                         <i class="bi bi-check-circle me-2"></i>장바구니에서 삭제되었습니다.
@@ -396,8 +400,10 @@ document.addEventListener("DOMContentLoaded", () => {
             });
 
             pendingCartId = null;
-        }
-    });
+        });
+    } else {
+        console.warn("[초기화] confirmDeleteBtn을 찾을 수 없습니다.");
+    }
 });
 </script>
 {% endblock %}
