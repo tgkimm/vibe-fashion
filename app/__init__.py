@@ -525,6 +525,39 @@ def create_app():
 
         return render_template("admin/products.html", products=products, categories=categories)
 
+    @app.route("/admin/products/<product_id>/toggle", methods=["POST"])
+    @login_required
+    @admin_required
+    def toggle_admin_product(product_id):
+        from flask import jsonify
+        from app.utils import get_supabase_admin_client, get_supabase_client
+
+        admin_client = get_supabase_admin_client()
+        db_client = admin_client or get_supabase_client()
+        if not db_client:
+            return jsonify({"success": False, "message": "데이터베이스 연결에 실패했습니다."}), 500
+
+        try:
+            product_result = (
+                db_client.table("products")
+                .select("id, is_active")
+                .eq("id", product_id)
+                .execute()
+            )
+            if not product_result.data:
+                return jsonify({"success": False, "message": "상품을 찾을 수 없습니다."}), 404
+
+            is_active = not bool(product_result.data[0].get("is_active", False))
+            db_client.table("products").update({"is_active": is_active}).eq("id", product_id).execute()
+            return jsonify({
+                "success": True,
+                "is_active": is_active,
+                "message": "상품이 다시 활성화되었습니다." if is_active else "상품이 비활성화되었습니다.",
+            })
+        except Exception as e:
+            app.logger.error(f"[상품 활성 상태 변경 오류] {e}", exc_info=True)
+            return jsonify({"success": False, "message": "상품 상태 변경 중 오류가 발생했습니다."}), 500
+
     # 5. 템플릿 전역 변수 및 컨텍스트 프로세서 등록
     @app.context_processor
     def inject_cart_count():

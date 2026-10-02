@@ -128,7 +128,7 @@
                                     </td>
 
                                     <!-- 6. 활성상태 -->
-                                    <td class="text-center pe-4">
+                                    <td class="text-center pe-4 product-status">
                                         {% if product.is_active %}
                                             <span class="badge bg-success-subtle text-success px-2.5 py-1.5 rounded-pill fw-medium">
                                                 <i class="bi bi-check-circle-fill me-1"></i>활성
@@ -140,6 +140,9 @@
                                         {% endif %}
                                     </td>
                                     <td class="text-center pe-4">
+                                        <button type="button" class="btn btn-sm {{ 'btn-outline-danger' if product.is_active else 'btn-outline-success' }} rounded-3 toggle-product-btn mb-1" data-product-id="{{ product.id }}" data-is-active="{{ 'true' if product.is_active else 'false' }}">
+                                            {{ '비활성화' if product.is_active else '다시 활성화' }}
+                                        </button>
                                         <button type="button" class="btn btn-sm btn-outline-primary rounded-3 edit-product-btn" data-product='{{ product|tojson|forceescape }}' aria-label="{{ product.name }} 수정">
                                             <i class="bi bi-pencil-square me-1"></i>수정
                                         </button>
@@ -279,6 +282,12 @@ document.addEventListener("DOMContentLoaded", function () {
     let editingProductId = null;
 
     document.getElementById("productTableBody").addEventListener("click", function (event) {
+        const toggleButton = event.target.closest(".toggle-product-btn");
+        if (toggleButton) {
+            toggleProduct(toggleButton);
+            return;
+        }
+
         const editButton = event.target.closest(".edit-product-btn");
         if (!editButton) return;
 
@@ -294,6 +303,43 @@ document.addEventListener("DOMContentLoaded", function () {
         submitBtnText.textContent = "수정하기";
         createProductModal.show();
     });
+
+    async function toggleProduct(button) {
+        const isActive = button.dataset.isActive === "true";
+        if (isActive && !window.confirm("이 상품을 비활성화하시겠습니까?\n쇼핑몰 메인/상세 페이지에서 더 이상 보이지 않게 됩니다.")) {
+            return;
+        }
+
+        button.disabled = true;
+        try {
+            const response = await fetch(`/admin/products/${encodeURIComponent(button.dataset.productId)}/toggle`, {
+                method: "POST",
+                headers: { "X-Requested-With": "XMLHttpRequest" },
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                window.alert(result.message || "상품 상태 변경 중 오류가 발생했습니다.");
+                return;
+            }
+
+            const row = button.closest("tr");
+            const statusCell = row.querySelector(".product-status");
+            statusCell.innerHTML = result.is_active
+                ? '<span class="badge bg-success-subtle text-success px-2.5 py-1.5 rounded-pill fw-medium"><i class="bi bi-check-circle-fill me-1"></i>활성</span>'
+                : '<span class="badge bg-secondary-subtle text-secondary px-2.5 py-1.5 rounded-pill fw-medium"><i class="bi bi-dash-circle-fill me-1"></i>비활성</span>';
+            button.dataset.isActive = String(result.is_active);
+            button.classList.toggle("btn-outline-danger", result.is_active);
+            button.classList.toggle("btn-outline-success", !result.is_active);
+            button.textContent = result.is_active ? "비활성화" : "다시 활성화";
+            toastMessage.textContent = result.message;
+            toast.show();
+        } catch (error) {
+            console.error("상품 상태 변경 통신 에러:", error);
+            window.alert("서버 통신 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+        } finally {
+            button.disabled = false;
+        }
+    }
 
     // 가격 변경 시 정가 기본값 추천 (정가가 비어있는 경우)
     priceInput.addEventListener("blur", function () {
@@ -494,12 +540,15 @@ document.addEventListener("DOMContentLoaded", function () {
                         ? `<span class="badge bg-warning-subtle text-warning-emphasis px-2 py-1 rounded-pill fw-semibold">${Number(product.total_stock).toLocaleString()}개 (품절임박)</span>`
                         : `<span class="fw-semibold text-dark">${Number(product.total_stock).toLocaleString()}</span><span class="text-muted small">개</span>`}
             </td>
-            <td class="text-center pe-4">
+            <td class="text-center pe-4 product-status">
                 ${product.is_active
                     ? '<span class="badge bg-success-subtle text-success px-2.5 py-1.5 rounded-pill fw-medium"><i class="bi bi-check-circle-fill me-1"></i>활성</span>'
                     : '<span class="badge bg-secondary-subtle text-secondary px-2.5 py-1.5 rounded-pill fw-medium"><i class="bi bi-dash-circle-fill me-1"></i>비활성</span>'}
             </td>
             <td class="text-center pe-4">
+                <button type="button" class="btn btn-sm ${product.is_active ? 'btn-outline-danger' : 'btn-outline-success'} rounded-3 toggle-product-btn mb-1" data-product-id="${escapeHtml(product.id)}" data-is-active="${Boolean(product.is_active)}">
+                    ${product.is_active ? '비활성화' : '다시 활성화'}
+                </button>
                 <button type="button" class="btn btn-sm btn-outline-primary rounded-3 edit-product-btn" data-product='${escapeHtml(JSON.stringify(product))}' aria-label="${escapeHtml(product.name)} 수정">
                     <i class="bi bi-pencil-square me-1"></i>수정
                 </button>
