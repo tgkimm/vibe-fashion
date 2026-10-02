@@ -674,7 +674,33 @@ def create_app():
                 except (ValueError, TypeError):
                     return jsonify({"success": False, "message": "유효한 카테고리를 선택해 주세요."}), 400
 
+            option_stocks = data.get("option_stocks")
+            if option_stocks is not None:
+                if not isinstance(option_stocks, list):
+                    return jsonify({"success": False, "message": "옵션별 재고 정보가 올바르지 않습니다."}), 400
+                parsed_option_stocks = {}
+                try:
+                    for option_stock in option_stocks:
+                        option_id = int(option_stock["id"])
+                        raw_stock = str(option_stock["stock"]).strip()
+                        if option_id in parsed_option_stocks or not raw_stock.isdigit():
+                            raise ValueError
+                        parsed_option_stocks[option_id] = int(raw_stock)
+                except (KeyError, TypeError, ValueError):
+                    return jsonify({"success": False, "message": "재고는 0 이상의 정수로 입력해 주세요."}), 400
+
             try:
+                existing_options = (
+                    update_client.table("product_options")
+                    .select("id, stock, stock_quantity")
+                    .eq("product_id", product_id)
+                    .execute()
+                ).data or []
+                if option_stocks is not None and set(parsed_option_stocks) != {
+                    int(option.get("id")) for option in existing_options
+                }:
+                    return jsonify({"success": False, "message": "상품 옵션 정보가 변경되었습니다. 페이지를 새로고침해 주세요."}), 409
+
                 db_price = original_price
                 db_sale_price = price if original_price > price else None
                 update_client.table("products").update({
@@ -705,6 +731,28 @@ def create_app():
                 elif primary_image:
                     update_client.table("product_images").delete().eq("id", primary_image["id"]).execute()
 
+                if option_stocks is not None:
+                    for option in existing_options:
+                        option_id = int(option.get("id"))
+                        stock = parsed_option_stocks[option_id]
+                        stock_payload = {}
+                        if option.get("stock") is not None:
+                            stock_payload["stock"] = stock
+                        if option.get("stock_quantity") is not None:
+                            stock_payload["stock_quantity"] = stock
+                        if not stock_payload:
+                            stock_payload["stock_quantity"] = stock
+                        stock_result = (
+                            update_client.table("product_options")
+                            .update(stock_payload)
+                            .eq("id", option_id)
+                            .eq("product_id", product_id)
+                            .select("id")
+                            .execute()
+                        )
+                        if not stock_result.data:
+                            raise ValueError("옵션 재고를 수정하지 못했습니다.")
+
                 category_name = "미지정"
                 if parsed_category_id is not None:
                     category_result = update_client.table("categories").select("name").eq("id", parsed_category_id).execute()
@@ -713,7 +761,7 @@ def create_app():
 
                 product_result = (
                     update_client.table("products")
-                    .select("id, name, description, price, sale_price, is_active, category_id, product_options(stock, stock_quantity), product_images(image_url, is_primary, sort_order)")
+                    .select("id, name, description, price, sale_price, is_active, category_id, product_options(id, color, size, stock, stock_quantity), product_images(image_url, is_primary, sort_order)")
                     .eq("id", product_id)
                     .single()
                     .execute()
@@ -724,6 +772,12 @@ def create_app():
                 thumbnail_url = images[0].get("image_url") if images else ""
                 options = updated.get("product_options") or []
                 total_stock = sum(max(int(option.get("stock") or 0), int(option.get("stock_quantity") or 0)) for option in options)
+                formatted_options = [{
+                    "id": option.get("id"),
+                    "color": option.get("color") or "",
+                    "size": option.get("size") or "",
+                    "stock": max(int(option.get("stock") or 0), int(option.get("stock_quantity") or 0)),
+                } for option in options]
                 effective_price = float(updated.get("sale_price") if updated.get("sale_price") is not None else updated.get("price") or 0)
                 return jsonify({
                     "success": True,
@@ -737,6 +791,7 @@ def create_app():
                         "price": effective_price,
                         "original_price": float(updated.get("price") or 0),
                         "total_stock": total_stock,
+                        "options": formatted_options,
                         "is_active": bool(updated.get("is_active", False)),
                         "thumbnail_url": thumbnail_url,
                     },
@@ -763,7 +818,7 @@ def create_app():
                     .select(
                         "id, category_id, name, description, price, sale_price, is_active, created_at, "
                         "categories(id, name), "
-                        "product_options(id, stock, stock_quantity), "
+                        "product_options(id, color, size, stock, stock_quantity), "
                         "product_images(image_url, is_primary, sort_order)"
                     )
                     .order("created_at", desc=True)
@@ -792,6 +847,12 @@ def create_app():
                         max(int(opt.get("stock") or 0), int(opt.get("stock_quantity") or 0))
                         for opt in options
                     )
+                    formatted_options = [{
+                        "id": option.get("id"),
+                        "color": option.get("color") or "",
+                        "size": option.get("size") or "",
+                        "stock": max(int(option.get("stock") or 0), int(option.get("stock_quantity") or 0)),
+                    } for option in options]
 
                     # 4. 대표 이미지
                     images = item.get("product_images") or []
@@ -812,6 +873,7 @@ def create_app():
                         "price": effective_price,
                         "original_price": original_price,
                         "total_stock": total_stock,
+                        "options": formatted_options,
                         "is_active": bool(item.get("is_active", False)),
                         "thumbnail_url": thumbnail_url,
                         "image_url": thumbnail_url,

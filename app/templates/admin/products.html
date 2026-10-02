@@ -228,6 +228,12 @@
                             <div class="form-text small text-muted">외부 이미지 링크나 static 이미지 경로를 입력하세요.</div>
                         </div>
 
+                        <div class="col-12 d-none" id="productStockSection">
+                            <label class="form-label fw-semibold small">옵션별 재고</label>
+                            <div id="productOptionStocks" class="border rounded-3 p-3"></div>
+                            <div class="form-text small text-muted">색상·사이즈 옵션별 현재 재고를 입력하세요.</div>
+                        </div>
+
                         <!-- 설명 -->
                         <div class="col-12">
                             <label for="productDescription" class="form-label fw-semibold small">상품 설명</label>
@@ -277,6 +283,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const priceInput = document.getElementById("productPrice");
     const originalPriceInput = document.getElementById("productOriginalPrice");
+    const stockSection = document.getElementById("productStockSection");
+    const optionStocksContainer = document.getElementById("productOptionStocks");
     let editingProductId = null;
 
     document.getElementById("productTableBody").addEventListener("click", function (event) {
@@ -297,10 +305,57 @@ document.addEventListener("DOMContentLoaded", function () {
         originalPriceInput.value = product.original_price ?? product.price ?? "";
         document.getElementById("productImageUrl").value = product.image_url || product.thumbnail_url || "";
         document.getElementById("productDescription").value = product.description || "";
+        renderOptionStocks(product.options || []);
+        stockSection.classList.remove("d-none");
         modalTitle.innerHTML = '<i class="bi bi-pencil-square me-2 text-primary"></i>상품 수정';
         submitBtnText.textContent = "수정하기";
         createProductModal.show();
     });
+
+    function renderOptionStocks(options) {
+        optionStocksContainer.replaceChildren();
+        if (!options.length) {
+            const emptyMessage = document.createElement("p");
+            emptyMessage.className = "text-muted small mb-0";
+            emptyMessage.textContent = "등록된 재고 옵션이 없습니다.";
+            optionStocksContainer.append(emptyMessage);
+            return;
+        }
+
+        options.forEach(function (option) {
+            const row = document.createElement("div");
+            row.className = "row g-2 align-items-center";
+
+            const label = document.createElement("label");
+            label.className = "col form-label mb-0";
+            const optionName = [option.color, option.size].filter(Boolean).join(" / ") || `옵션 #${option.id}`;
+            label.textContent = optionName;
+
+            const inputColumn = document.createElement("div");
+            inputColumn.className = "col-5 col-sm-4";
+            const inputGroup = document.createElement("div");
+            inputGroup.className = "input-group input-group-sm";
+
+            const input = document.createElement("input");
+            input.type = "number";
+            input.className = "form-control option-stock-input";
+            input.min = "0";
+            input.step = "1";
+            input.required = true;
+            input.value = option.stock ?? 0;
+            input.dataset.optionId = option.id;
+            input.setAttribute("aria-label", `${optionName} 재고`);
+
+            const unit = document.createElement("span");
+            unit.className = "input-group-text";
+            unit.textContent = "개";
+
+            inputGroup.append(input, unit);
+            inputColumn.append(inputGroup);
+            row.append(label, inputColumn);
+            optionStocksContainer.append(row);
+        });
+    }
 
     async function toggleProduct(button) {
         const isActive = button.dataset.isActive === "true";
@@ -356,6 +411,8 @@ document.addEventListener("DOMContentLoaded", function () {
         submitSpinner.classList.add("d-none");
         submitBtnText.textContent = "등록하기";
         modalTitle.innerHTML = '<i class="bi bi-plus-circle me-2 text-primary"></i>신규 상품 등록';
+        stockSection.classList.add("d-none");
+        optionStocksContainer.replaceChildren();
         editingProductId = null;
     });
 
@@ -370,6 +427,9 @@ document.addEventListener("DOMContentLoaded", function () {
         const originalPrice = parseFloat(originalPriceInput.value);
         const imageUrl = document.getElementById("productImageUrl").value.trim();
         const description = document.getElementById("productDescription").value.trim();
+        const optionStocks = Array.from(optionStocksContainer.querySelectorAll(".option-stock-input"), function (input) {
+            return { id: input.dataset.optionId, stock: input.value };
+        });
 
         // 클라이언트 측 유효성 검사
         let isValid = true;
@@ -420,6 +480,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     original_price: originalPrice,
                     image_url: imageUrl || "",
                     description: description || "",
+                    option_stocks: optionStocks,
                 }),
             });
 
