@@ -203,10 +203,11 @@ def create_app():
             recent_orders=recent_orders,
         )
 
-    @app.route("/admin/products", methods=["GET", "POST"])
+    @app.route("/admin/products", defaults={"product_id": None}, methods=["GET", "POST"])
+    @app.route("/admin/products/<product_id>", methods=["PATCH"])
     @login_required
     @admin_required
-    def admin_products():
+    def admin_products(product_id=None):
         """
         관리자 상품 관리 페이지:
         - GET /admin/products: 전체 상품 및 카테고리 목록 조회
@@ -321,18 +322,132 @@ def create_app():
                         "id": new_product_id,
                         "name": new_product.get("name"),
                         "description": new_product.get("description") or "",
+                        "category_id": parsed_category_id,
                         "category_name": category_name,
                         "price": price,
                         "original_price": original_price,
                         "total_stock": 0,
                         "is_active": True,
                         "thumbnail_url": image_url or "",
+                        "image_url": image_url or "",
                     }
                 }), 201
 
             except Exception as e:
                 app.logger.error(f"[신규 상품 등록 오류] {e}", exc_info=True)
                 return jsonify({"success": False, "message": f"상품 등록 중 오류가 발생했습니다: {str(e)}"}), 500
+
+        # PATCH 요청 처리: 기존 상품 수정
+        if request.method == "PATCH":
+            import math
+            from flask import request, jsonify
+            from app.utils import get_supabase_admin_client, get_supabase_client
+
+            admin_client = get_supabase_admin_client()
+            update_client = admin_client or get_supabase_client()
+            if not update_client:
+                return jsonify({"success": False, "message": "데이터베이스 연결에 실패했습니다."}), 500
+
+            data = request.get_json(silent=True) or request.form
+            name = (data.get("name") or "").strip()
+            category_id = data.get("category_id")
+            description = (data.get("description") or "").strip()
+            image_url = (data.get("image_url") or "").strip()
+
+            if not name:
+                return jsonify({"success": False, "message": "상품 이름을 입력해 주세요."}), 400
+
+            try:
+                price = float(data.get("price"))
+            except (ValueError, TypeError):
+                return jsonify({"success": False, "message": "유효한 가격을 입력해 주세요."}), 400
+            if not math.isfinite(price) or price <= 0:
+                return jsonify({"success": False, "message": "가격은 0보다 커야 합니다."}), 400
+
+            try:
+                original_price = float(data.get("original_price"))
+            except (ValueError, TypeError):
+                return jsonify({"success": False, "message": "유효한 정가를 입력해 주세요."}), 400
+            if not math.isfinite(original_price) or original_price < price:
+                return jsonify({"success": False, "message": "정가는 가격보다 작을 수 없습니다."}), 400
+
+            parsed_category_id = None
+            if category_id:
+                try:
+                    parsed_category_id = int(category_id)
+                except (ValueError, TypeError):
+                    return jsonify({"success": False, "message": "유효한 카테고리를 선택해 주세요."}), 400
+
+            try:
+                db_price = original_price
+                db_sale_price = price if original_price > price else None
+                update_client.table("products").update({
+                    "name": name,
+                    "description": description or None,
+                    "category_id": parsed_category_id,
+                    "price": db_price,
+                    "sale_price": db_sale_price,
+                }).eq("id", product_id).execute()
+
+                image_query = (
+                    update_client.table("product_images")
+                    .select("id")
+                    .eq("product_id", product_id)
+                    .eq("is_primary", True)
+                    .execute()
+                )
+                primary_image = (image_query.data or [None])[0]
+                if image_url:
+                    image_payload = {"image_url": image_url, "is_primary": True, "sort_order": 1}
+                    if primary_image:
+                        update_client.table("product_images").update(image_payload).eq("id", primary_image["id"]).execute()
+                    else:
+                        update_client.table("product_images").insert({
+                            "product_id": product_id,
+                            **image_payload,
+                        }).execute()
+                elif primary_image:
+                    update_client.table("product_images").delete().eq("id", primary_image["id"]).execute()
+
+                category_name = "미지정"
+                if parsed_category_id is not None:
+                    category_result = update_client.table("categories").select("name").eq("id", parsed_category_id).execute()
+                    if category_result.data:
+                        category_name = category_result.data[0].get("name") or category_name
+
+                product_result = (
+                    update_client.table("products")
+                    .select("id, name, description, price, sale_price, is_active, category_id, product_options(stock, stock_quantity), product_images(image_url, is_primary, sort_order)")
+                    .eq("id", product_id)
+                    .single()
+                    .execute()
+                )
+                updated = product_result.data
+                images = updated.get("product_images") or []
+                images.sort(key=lambda image: (not image.get("is_primary", False), image.get("sort_order", 0)))
+                thumbnail_url = images[0].get("image_url") if images else ""
+                options = updated.get("product_options") or []
+                total_stock = sum(max(int(option.get("stock") or 0), int(option.get("stock_quantity") or 0)) for option in options)
+                effective_price = float(updated.get("sale_price") if updated.get("sale_price") is not None else updated.get("price") or 0)
+                return jsonify({
+                    "success": True,
+                    "message": "상품 정보가 성공적으로 수정되었습니다.",
+                    "product": {
+                        "id": updated.get("id"),
+                        "name": updated.get("name") or name,
+                        "description": updated.get("description") or "",
+                        "category_id": updated.get("category_id"),
+                        "category_name": category_name,
+                        "price": effective_price,
+                        "original_price": float(updated.get("price") or 0),
+                        "total_stock": total_stock,
+                        "is_active": bool(updated.get("is_active", False)),
+                        "thumbnail_url": thumbnail_url,
+                    },
+                })
+            except Exception as e:
+                app.logger.error(f"[상품 수정 오류] {e}", exc_info=True)
+                return jsonify({"success": False, "message": f"상품 수정 중 오류가 발생했습니다: {str(e)}"}), 500
 
         # GET 요청 처리: 상품 목록 및 카테고리 목록 조회
         products = []
@@ -350,7 +465,7 @@ def create_app():
                 res = (
                     db_client.table("products")
                     .select(
-                        "id, name, description, price, sale_price, is_active, created_at, "
+                        "id, category_id, name, description, price, sale_price, is_active, created_at, "
                         "categories(id, name), "
                         "product_options(id, stock, stock_quantity), "
                         "product_images(image_url, is_primary, sort_order)"
@@ -396,12 +511,14 @@ def create_app():
                         "id": item.get("id"),
                         "name": item.get("name") or "",
                         "description": item.get("description") or "",
+                        "category_id": item.get("category_id"),
                         "category_name": category_name,
                         "price": effective_price,
                         "original_price": original_price,
                         "total_stock": total_stock,
                         "is_active": bool(item.get("is_active", False)),
                         "thumbnail_url": thumbnail_url,
+                        "image_url": thumbnail_url,
                     })
             except Exception as e:
                 app.logger.error(f"[관리자 상품 목록 조회 오류] {e}", exc_info=True)

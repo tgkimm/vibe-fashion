@@ -67,12 +67,13 @@
                                 <th scope="col" class="text-end" style="min-width: 110px;">정가</th>
                                 <th scope="col" class="text-end" style="min-width: 100px;">재고</th>
                                 <th scope="col" class="text-center pe-4" style="min-width: 100px;">활성상태</th>
+                                <th scope="col" class="text-center pe-4" style="min-width: 90px;">관리</th>
                             </tr>
                         </thead>
                         <tbody id="productTableBody">
                             {% if products %}
                                 {% for product in products %}
-                                <tr>
+                                <tr id="product-row-{{ product.id }}">
                                     <!-- 1. 이름 (대표 이미지 + 상품명 + 설명) -->
                                     <td class="ps-4">
                                         <div class="d-flex align-items-center">
@@ -138,11 +139,16 @@
                                             </span>
                                         {% endif %}
                                     </td>
+                                    <td class="text-center pe-4">
+                                        <button type="button" class="btn btn-sm btn-outline-primary rounded-3 edit-product-btn" data-product='{{ product|tojson|forceescape }}' aria-label="{{ product.name }} 수정">
+                                            <i class="bi bi-pencil-square me-1"></i>수정
+                                        </button>
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             {% else %}
                                 <tr id="emptyProductRow">
-                                    <td colspan="6" class="text-center py-5 text-muted">
+                                    <td colspan="7" class="text-center py-5 text-muted">
                                         <i class="bi bi-box-seam fs-2 d-block mb-2 text-secondary"></i>
                                         등록된 상품이 없습니다.
                                     </td>
@@ -261,6 +267,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const submitBtn = document.getElementById("submitProductBtn");
     const submitSpinner = document.getElementById("submitSpinner");
     const submitBtnText = document.getElementById("submitBtnText");
+    const modalTitle = document.getElementById("createProductModalLabel");
     const errorAlert = document.getElementById("modalAlertError");
     const errorAlertMsg = document.getElementById("modalAlertErrorMsg");
     const toastEl = document.getElementById("adminToast");
@@ -269,6 +276,24 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const priceInput = document.getElementById("productPrice");
     const originalPriceInput = document.getElementById("productOriginalPrice");
+    let editingProductId = null;
+
+    document.getElementById("productTableBody").addEventListener("click", function (event) {
+        const editButton = event.target.closest(".edit-product-btn");
+        if (!editButton) return;
+
+        const product = JSON.parse(editButton.dataset.product);
+        editingProductId = product.id;
+        document.getElementById("productName").value = product.name || "";
+        document.getElementById("productCategory").value = product.category_id || "";
+        priceInput.value = product.price ?? "";
+        originalPriceInput.value = product.original_price ?? product.price ?? "";
+        document.getElementById("productImageUrl").value = product.image_url || product.thumbnail_url || "";
+        document.getElementById("productDescription").value = product.description || "";
+        modalTitle.innerHTML = '<i class="bi bi-pencil-square me-2 text-primary"></i>상품 수정';
+        submitBtnText.textContent = "수정하기";
+        createProductModal.show();
+    });
 
     // 가격 변경 시 정가 기본값 추천 (정가가 비어있는 경우)
     priceInput.addEventListener("blur", function () {
@@ -286,6 +311,8 @@ document.addEventListener("DOMContentLoaded", function () {
         submitBtn.disabled = false;
         submitSpinner.classList.add("d-none");
         submitBtnText.textContent = "등록하기";
+        modalTitle.innerHTML = '<i class="bi bi-plus-circle me-2 text-primary"></i>신규 상품 등록';
+        editingProductId = null;
     });
 
     // 폼 제출 이벤트 처리
@@ -330,11 +357,14 @@ document.addEventListener("DOMContentLoaded", function () {
         // 로딩 상태 시작
         submitBtn.disabled = true;
         submitSpinner.classList.remove("d-none");
-        submitBtnText.textContent = "등록 중...";
+        submitBtnText.textContent = editingProductId ? "수정 중..." : "등록 중...";
 
         try {
-            const response = await fetch("{{ url_for('admin_products') }}", {
-                method: "POST",
+            const isEditing = editingProductId !== null;
+            const response = await fetch(isEditing
+                ? `/admin/products/${encodeURIComponent(editingProductId)}`
+                : "{{ url_for('admin_products') }}", {
+                method: isEditing ? "PATCH" : "POST",
                 headers: {
                     "Content-Type": "application/json",
                     "X-Requested-With": "XMLHttpRequest",
@@ -352,23 +382,27 @@ document.addEventListener("DOMContentLoaded", function () {
             const result = await response.json();
 
             if (!response.ok || !result.success) {
-                const errMsg = result.message || "상품 등록 중 오류가 발생했습니다.";
+                const errMsg = result.message || (isEditing ? "상품 수정 중 오류가 발생했습니다." : "상품 등록 중 오류가 발생했습니다.");
                 errorAlertMsg.textContent = errMsg;
                 errorAlert.classList.remove("d-none");
                 submitBtn.disabled = false;
                 submitSpinner.classList.add("d-none");
-                submitBtnText.textContent = "등록하기";
+                submitBtnText.textContent = isEditing ? "수정하기" : "등록하기";
                 return;
             }
 
             // 1. 모달 닫기
             createProductModal.hide();
 
-            // 2. JS로 상품 목록 동적 추가 (페이지 리로드 없이 처리)
-            addProductToTable(result.product);
+            // 상품 행만 교체하거나 새 행을 추가해 목록을 갱신합니다.
+            if (isEditing) {
+                updateProductRow(result.product);
+            } else {
+                addProductToTable(result.product);
+            }
 
             // 3. 성공 토스트 표시
-            toastMessage.textContent = result.message || "상품이 성공적으로 등록되었습니다.";
+            toastMessage.textContent = result.message || (isEditing ? "상품 정보가 수정되었습니다." : "상품이 성공적으로 등록되었습니다.");
             toast.show();
 
         } catch (error) {
@@ -377,7 +411,7 @@ document.addEventListener("DOMContentLoaded", function () {
             errorAlert.classList.remove("d-none");
             submitBtn.disabled = false;
             submitSpinner.classList.add("d-none");
-            submitBtnText.textContent = "등록하기";
+            submitBtnText.textContent = editingProductId ? "수정하기" : "등록하기";
         }
     });
 
@@ -392,7 +426,29 @@ document.addEventListener("DOMContentLoaded", function () {
             emptyRow.remove();
         }
 
+        const tr = createProductRow(product);
+
+        // 테이블 최상단에 새 상품 추가
+        tbody.prepend(tr);
+
+        // 총 상품 수 카운트 업데이트
+        const countEl = document.getElementById("totalProductCount");
+        if (countEl) {
+            const currentCount = parseInt(countEl.textContent.replace(/[^0-9]/g, ""), 10) || 0;
+            countEl.textContent = (currentCount + 1).toLocaleString();
+        }
+    }
+
+    function updateProductRow(product) {
+        const currentRow = document.getElementById(`product-row-${product.id}`);
+        if (currentRow) {
+            currentRow.replaceWith(createProductRow(product));
+        }
+    }
+
+    function createProductRow(product) {
         const tr = document.createElement("tr");
+        tr.id = `product-row-${product.id}`;
 
         const formattedPrice = Number(product.price).toLocaleString();
         let originalPriceHtml = "";
@@ -432,24 +488,24 @@ document.addEventListener("DOMContentLoaded", function () {
                 ${originalPriceHtml}
             </td>
             <td class="text-end">
-                <span class="badge bg-danger-subtle text-danger px-2 py-1 rounded-pill fw-semibold">품절 (0)</span>
+                ${Number(product.total_stock || 0) === 0
+                    ? '<span class="badge bg-danger-subtle text-danger px-2 py-1 rounded-pill fw-semibold">품절 (0)</span>'
+                    : Number(product.total_stock) <= 10
+                        ? `<span class="badge bg-warning-subtle text-warning-emphasis px-2 py-1 rounded-pill fw-semibold">${Number(product.total_stock).toLocaleString()}개 (품절임박)</span>`
+                        : `<span class="fw-semibold text-dark">${Number(product.total_stock).toLocaleString()}</span><span class="text-muted small">개</span>`}
             </td>
             <td class="text-center pe-4">
-                <span class="badge bg-success-subtle text-success px-2.5 py-1.5 rounded-pill fw-medium">
-                    <i class="bi bi-check-circle-fill me-1"></i>활성
-                </span>
+                ${product.is_active
+                    ? '<span class="badge bg-success-subtle text-success px-2.5 py-1.5 rounded-pill fw-medium"><i class="bi bi-check-circle-fill me-1"></i>활성</span>'
+                    : '<span class="badge bg-secondary-subtle text-secondary px-2.5 py-1.5 rounded-pill fw-medium"><i class="bi bi-dash-circle-fill me-1"></i>비활성</span>'}
+            </td>
+            <td class="text-center pe-4">
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-3 edit-product-btn" data-product='${escapeHtml(JSON.stringify(product))}' aria-label="${escapeHtml(product.name)} 수정">
+                    <i class="bi bi-pencil-square me-1"></i>수정
+                </button>
             </td>
         `;
-
-        // 테이블 최상단에 새 상품 추가
-        tbody.prepend(tr);
-
-        // 총 상품 수 카운트 업데이트
-        const countEl = document.getElementById("totalProductCount");
-        if (countEl) {
-            const currentCount = parseInt(countEl.textContent.replace(/[^0-9]/g, ""), 10) || 0;
-            countEl.textContent = (currentCount + 1).toLocaleString();
-        }
+        return tr;
     }
 
     // 간단한 HTML 특수문자 이스케이프 함수
