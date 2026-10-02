@@ -316,6 +316,13 @@ CREATE POLICY "본인 장바구니 관리" ON public.carts FOR ALL USING (auth.u
 CREATE POLICY "본인 주문 내역 조회" ON public.orders FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "본인 주문 생성" ON public.orders FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+CREATE POLICY "본인 주문 상세 내역 조회" ON public.order_items FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.orders WHERE orders.id = order_items.order_id AND orders.user_id = auth.uid())
+);
+CREATE POLICY "본인 주문 상세 생성" ON public.order_items FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM public.orders WHERE orders.id = order_items.order_id AND orders.user_id = auth.uid())
+);
+
 CREATE POLICY "본인 알림 조회 및 수정" ON public.notifications FOR ALL USING (auth.uid() = user_id);
 CREATE POLICY "본인 환불 신청 및 조회" ON public.refunds FOR ALL USING (auth.uid() = user_id);
 CREATE POLICY "본인 리뷰 작성 및 관리" ON public.reviews FOR ALL USING (auth.uid() = user_id);

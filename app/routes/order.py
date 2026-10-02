@@ -277,6 +277,9 @@ def create_order():
         flash("데이터베이스 연결에 실패했습니다.", "error")
         return redirect(url_for("order.checkout"))
 
+    order_id = None
+    decremented_options = []  # 롤백 대비 이력
+
     try:
         # 1. 장바구니 조회 + 재고 사전 확인 (재고 부족 시 에러, 처리 중단, 아무것도 쓰지 않음)
         cart_res = (
@@ -393,7 +396,7 @@ def create_order():
             "shipping_address": shipping_data,
             "payment_method": "dummy",
         }
-        supabase.table("orders").insert(order_payload).execute()
+        admin_supabase.table("orders").insert(order_payload).execute()
         logger.info(f"[orders INSERT 성공] order_id={order_id}")
 
         # 5. order_items INSERT (상품명, 색상, 사이즈, 가격 스냅샷)
@@ -412,13 +415,12 @@ def create_order():
                 "total_price": item["price"] * item["quantity"],
             })
 
-        supabase.table("order_items").insert(order_items_payload).execute()
+        admin_supabase.table("order_items").insert(order_items_payload).execute()
         logger.info(f"[order_items INSERT 성공] {len(order_items_payload)}개 항목")
 
         # 6. product_options.stock 차감 (service_role 키 사용, 조건부 UPDATE)
         #    UPDATE ... SET stock = stock - 수량 WHERE id = 옵션ID AND stock >= 수량
         #    영향받은 행이 0개면 "방금 재고가 소진되었습니다" 에러로 롤백 처리
-        decremented_options = []  # 롤백 대비 이력
         for item in items:
             opt_id = item["option_id"]
             qty = item["quantity"]
@@ -437,14 +439,14 @@ def create_order():
 
             # stock 컬럼 또는 stock_quantity 컬럼 중 활성화된 컬럼 기준으로 조건부 UPDATE
             update_payload = {}
-            query = admin_supabase.table("product_options").eq("id", opt_id)
+            filter_col = None
 
             if curr_stock_val is not None and curr_stock_val >= qty:
                 update_payload["stock"] = curr_stock_val - qty
-                query = query.gte("stock", qty)
+                filter_col = "stock"
             elif curr_qty_val is not None and curr_qty_val >= qty:
                 update_payload["stock_quantity"] = curr_qty_val - qty
-                query = query.gte("stock_quantity", qty)
+                filter_col = "stock_quantity"
             else:
                 # 조건 만족 불가 -> 롤백
                 logger.warning(f"[재고 차감 실패] 조건 불충족: opt_id={opt_id}")
@@ -452,7 +454,8 @@ def create_order():
                 flash("방금 재고가 소진되었습니다.", "error")
                 return redirect(url_for("cart.view_cart"))
 
-            update_res = query.update(update_payload).execute()
+            query = admin_supabase.table("product_options").update(update_payload).eq("id", opt_id).gte(filter_col, qty)
+            update_res = query.execute()
             affected_rows = update_res.data or []
 
             if len(affected_rows) == 0:
@@ -471,7 +474,7 @@ def create_order():
 
         # 7. carts 아이템 DELETE
         for cart_item in cart_items:
-            supabase.table("carts").delete().eq("id", cart_item["id"]).execute()
+            admin_supabase.table("carts").delete().eq("id", cart_item["id"]).execute()
         session.pop("cart", None)
         logger.info(f"[장바구니 비우기 완료] user_id={user_id}")
 
@@ -481,6 +484,8 @@ def create_order():
 
     except Exception as e:
         logger.error(f"[주문 생성 오류] 예외 발생: {e}", exc_info=True)
+        if order_id:
+            _rollback_order(admin_supabase, order_id, decremented_options)
         if _is_auth_error(e):
             flash("로그인이 만료되었습니다. 다시 로그인해 주세요.", "error")
             return redirect(url_for("auth.login", next=url_for("order.checkout")))
