@@ -244,6 +244,9 @@ function handleDeleteConfirm(event) {
             const remainingRows = document.querySelectorAll("#cart-items-tbody tr");
             console.log(`[DELETE] 남은 행의 수: ${remainingRows.length}`);
             if (remainingRows.length === 0) {
+                const navBadge = document.getElementById("nav-cart-badge");
+                if (navBadge) navBadge.textContent = "0";
+
                 // 장바구니 비었을 때
                 const cartContent = document.getElementById("cart-content");
                 if (cartContent) {
@@ -317,6 +320,12 @@ function updateSummary() {
     document.getElementById("summary-subtotal").textContent = `${totalAmount.toLocaleString()}원`;
     document.getElementById("shipping-amount").textContent = `${shippingCost.toLocaleString()}`;
     document.getElementById("summary-total-amount").textContent = `${finalTotal.toLocaleString()}원`;
+
+    // 상단 네비게이션 장바구니 뱃지 실시간 동기화
+    const navBadge = document.getElementById("nav-cart-badge");
+    if (navBadge) {
+        navBadge.textContent = totalCount;
+    }
 
     // 품절 상품이 있으면 주문 버튼 비활성화
     const checkoutBtn = document.getElementById("checkout-btn");

@@ -35,9 +35,25 @@ def create_app():
     @app.context_processor
     def inject_cart_count():
         from flask import session
-        cart = session.get("cart", {})
-        total_count = sum(item.get("quantity", 1) for item in cart.values())
         current_user = session.get("user")
+        total_count = 0
+        if current_user and current_user.get("id"):
+            try:
+                from app.utils import get_user_supabase_client
+                supabase = get_user_supabase_client()
+                if supabase:
+                    cart_res = (
+                        supabase.table("carts")
+                        .select("quantity")
+                        .eq("user_id", current_user["id"])
+                        .execute()
+                    )
+                    total_count = sum(item.get("quantity", 0) for item in (cart_res.data or []))
+            except Exception:
+                pass
+        else:
+            cart = session.get("cart", {})
+            total_count = sum(item.get("quantity", 1) for item in cart.values())
         return {"cart_count": total_count, "current_user": current_user}
 
     return app

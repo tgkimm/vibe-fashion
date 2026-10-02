@@ -425,10 +425,25 @@ def remove_from_cart():
 @cart_bp.route("/count")
 def get_cart_count():
     """
-    현재 장바구니 품목 개수 반환
+    현재 장바구니 품목 개수 반환 (로그인 시 DB carts 기준, 미로그인 시 세션 기준)
     """
+    user = session.get("user")
+    if user and user.get("id"):
+        supabase = _get_user_client()
+        if supabase:
+            try:
+                cart_res = (
+                    supabase.table("carts")
+                    .select("quantity")
+                    .eq("user_id", user["id"])
+                    .execute()
+                )
+                total_count = sum(item.get("quantity", 0) for item in (cart_res.data or []))
+                return jsonify({"cart_count": total_count})
+            except Exception as e:
+                logger.warning(f"[장바구니 수량 조회 실패] {e}")
     cart = session.get("cart", {})
-    total_count = sum(item["quantity"] for item in cart.values())
+    total_count = sum(item.get("quantity", 1) for item in cart.values())
     return jsonify({"cart_count": total_count})
 
 
@@ -487,6 +502,15 @@ def delete_cart_item(cart_id):
 
         # 5. 성공 시 JSON 반환
         logger.info(f"[장바구니 삭제] 성공: cart_id={cart_id}")
+        # 세션 cart에서도 해당 항목 제거 (있는 경우)
+        cart = session.get("cart", {})
+        keys_to_del = [k for k, v in cart.items() if str(v.get("id")) == str(cart_id) or str(v.get("option_id")) == str(cart_item.get("option_id"))]
+        for k in keys_to_del:
+            del cart[k]
+        if keys_to_del:
+            session["cart"] = cart
+            session.modified = True
+
         return jsonify({
             "success": True,
             "message": "장바구니에서 삭제되었습니다."
