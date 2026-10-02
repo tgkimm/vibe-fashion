@@ -488,63 +488,74 @@ def _rollback_order(admin_supabase, order_id, decremented_options):
 @order_bp.route("/checkout-success", methods=["GET"])
 def order_complete(order_id=None):
     """
-    주문 완료 페이지: /order/complete/<order_id>
-    (하위 호환을 위해 /order/checkout-success?order_id=... 도 지원)
+    주문 완료 페이지: GET /order/complete/<order_id>
+    - 로그인 필수
+    - 본인 주문 확인 (orders.user_id != session.user.id 차단)
+    - 주문번호, 배송지, 주문 상품 목록, 결제 금액 표시
+    - 마이페이지로 / 쇼핑 계속하기 버튼 제공
     """
+    user = session.get("user")
+    if not user or not user.get("id"):
+        flash("로그인이 필요한 페이지입니다.", "warning")
+        return redirect(url_for("auth.login"))
+
+    user_id = user["id"]
     target_order_id = order_id or request.args.get("order_id")
-    order_number = request.args.get("order_number")
 
     if not target_order_id:
         flash("주문 정보가 없습니다.", "warning")
         return redirect(url_for("main.index"))
 
-    user = session.get("user")
-    supabase = _get_user_client() or get_supabase_client()
-
-    if not supabase:
-        return render_template(
-            "order/checkout_success.html",
-            order_id=target_order_id,
-            order_number=order_number or "",
-            user=user,
-            items=[],
-            total_amount=0,
-            shipping_fee=0,
-            final_total=0,
-            total_count=0
-        )
+    admin_supabase = get_supabase_admin_client()
+    if not admin_supabase:
+        logger.error("[주문 완료 조회] Supabase 연결 실패")
+        flash("데이터베이스 연결에 실패했습니다.", "error")
+        return redirect(url_for("main.index"))
 
     try:
-        # 주문 정보 조회
+        # 1. 주문 정보 조회
         order_res = (
-            supabase.table("orders")
+            admin_supabase.table("orders")
             .select("*")
             .eq("id", target_order_id)
             .single()
             .execute()
         )
 
-        order_data = order_res.data if order_res.data else {}
+        order_data = order_res.data
+        if not order_data:
+            flash("존재하지 않는 주문입니다.", "warning")
+            return redirect(url_for("main.index"))
+
+        # 2. 본인 주문 여부 확인 (다른 사용자의 order_id 접근 차단)
+        if str(order_data.get("user_id")) != str(user_id):
+            logger.warning(f"[주문 완료 조회 차단] 접근 권한 없음: order_user={order_data.get('user_id')}, session_user={user_id}")
+            flash("해당 주문 내역에 접근할 권한이 없습니다.", "error")
+            return redirect(url_for("main.index"))
+
+        # 3. 금액 및 배송지 정보 계산
         total_amount = float(order_data.get("total_amount") or 0)
         payment_amount = float(order_data.get("payment_amount") or 0)
         shipping_fee = payment_amount - total_amount
-        order_num = order_data.get("order_number") or order_number or ""
+        shipping_address = order_data.get("shipping_address") or {}
 
-        # 주문 항목 조회
+        # 4. 주문 상세 상품 목록 조회
         items_res = (
-            supabase.table("order_items")
+            admin_supabase.table("order_items")
             .select("*")
             .eq("order_id", target_order_id)
+            .order("id")
             .execute()
         )
-
         items = items_res.data or []
         total_count = sum(item.get("quantity", 0) for item in items)
 
         return render_template(
             "order/checkout_success.html",
             order_id=target_order_id,
-            order_number=order_num,
+            order=order_data,
+            order_number=order_data.get("order_number"),
+            shipping_address=shipping_address,
             user=user,
             items=items,
             total_amount=total_amount,
@@ -554,70 +565,7 @@ def order_complete(order_id=None):
             created_at=order_data.get("created_at")
         )
 
-    user = session.get("user")
-    supabase = get_supabase_client()
-
-    if not supabase:
-        return render_template(
-            "order/checkout_success.html",
-            order_id=order_id,
-            order_number=order_number,
-            user=user,
-            items=[],
-            total_amount=0,
-            shipping_fee=0,
-            final_total=0,
-            total_count=0
-        )
-
-    try:
-        # 주문 정보 조회
-        order_res = (
-            supabase.table("orders")
-            .select("*")
-            .eq("id", order_id)
-            .single()
-            .execute()
-        )
-
-        order_data = order_res.data if order_res.data else {}
-        total_amount = float(order_data.get("total_amount") or 0)
-        payment_amount = float(order_data.get("payment_amount") or 0)
-        shipping_fee = payment_amount - total_amount
-
-        # 주문 항목 조회
-        items_res = (
-            supabase.table("order_items")
-            .select("*")
-            .eq("order_id", order_id)
-            .execute()
-        )
-
-        items = items_res.data or []
-        total_count = sum(item["quantity"] for item in items)
-
-        return render_template(
-            "order/checkout_success.html",
-            order_id=order_id,
-            order_number=order_number,
-            user=user,
-            items=items,
-            total_amount=total_amount,
-            shipping_fee=shipping_fee,
-            final_total=payment_amount,
-            total_count=total_count
-        )
-
     except Exception as e:
         logger.error(f"[주문 완료 조회 오류] {e}", exc_info=True)
-        return render_template(
-            "order/checkout_success.html",
-            order_id=order_id,
-            order_number=order_number,
-            user=user,
-            items=[],
-            total_amount=0,
-            shipping_fee=0,
-            final_total=0,
-            total_count=0
-        )
+        flash("주문 정보를 불러오는 중 오류가 발생했습니다.", "error")
+        return redirect(url_for("main.index"))

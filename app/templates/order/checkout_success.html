@@ -26,6 +26,21 @@
                             <p class="fw-bold mb-0">{% if created_at %}{{ created_at[:16].replace('T', ' ') }}{% elif now %}{{ now.strftime('%Y.%m.%d %H:%M') }}{% endif %}</p>
                         </div>
                     </div>
+                    {% if shipping_address %}
+                    <div class="row mb-3">
+                        <div class="col-12 text-start">
+                            <small class="text-muted">배송지 정보</small>
+                            <p class="fw-semibold mb-0">
+                                {{ shipping_address.recipient_name or '' }}
+                                {% if shipping_address.phone_number %}({{ shipping_address.phone_number }}){% endif %}
+                            </p>
+                            <p class="text-muted small mb-0">{{ shipping_address.address or '' }}</p>
+                            {% if shipping_address.memo %}
+                            <p class="text-muted small mb-0"><i class="bi bi-chat-left-text me-1"></i>요청사항: {{ shipping_address.memo }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
                     <hr>
                     <div class="row">
                         <div class="col-6 text-start">
