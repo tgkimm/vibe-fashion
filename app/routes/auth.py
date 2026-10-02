@@ -1065,6 +1065,49 @@ def mypage():
         except Exception as oe:
             logger.warning(f"[마이페이지 주문 내역 조회 경고] {oe}")
 
+        # 환불 내역 조회 (최신순, orders 조인)
+        refunds = []
+        try:
+            client_to_use = admin_client or supabase
+            if client_to_use:
+                refunds_res = (
+                    client_to_use.table("refunds")
+                    .select("*, orders(*)")
+                    .eq("user_id", user_info["id"])
+                    .order("requested_at", desc=True)
+                    .execute()
+                )
+                raw_refunds = refunds_res.data or []
+                for ref_item in raw_refunds:
+                    status_raw = str(ref_item.get("status") or "").upper()
+                    # 처리상태 배지 : REQUESTED(주황, 검토중), APPROVED(초록, 승인됨), REJECTED(회색, 반려됨)
+                    if status_raw == "REQUESTED":
+                        badge_color = "warning text-dark"
+                        status_text = "검토중"
+                    elif status_raw in ("APPROVED", "COMPLETED"):
+                        badge_color = "success"
+                        status_text = "승인됨"
+                    elif status_raw == "REJECTED":
+                        badge_color = "secondary"
+                        status_text = "반려됨"
+                    else:
+                        badge_color = "secondary"
+                        status_text = status_raw
+
+                    ref_item["badge_color"] = badge_color
+                    ref_item["status_text"] = status_text
+                    ref_item["display_refund_amount"] = int(float(ref_item.get("refund_amount") or 0))
+
+                    # 조인된 주문번호 가져오기
+                    ord_obj = ref_item.get("orders") or {}
+                    if isinstance(ord_obj, list) and len(ord_obj) > 0:
+                        ord_obj = ord_obj[0]
+                    ref_item["order_number"] = ord_obj.get("order_number") or "-"
+
+                    refunds.append(ref_item)
+        except Exception as re:
+            logger.warning(f"[마이페이지 환불 내역 조회 경고] {re}")
+
     # 현재 활성 탭 파라미터 (orders, refunds, profile)
     active_tab = request.args.get("tab", "profile")
 
@@ -1073,6 +1116,7 @@ def mypage():
         user=session.get("user"),
         profile=profile,
         orders=orders,
+        refunds=refunds,
         active_tab=active_tab,
         is_email_user=is_email_user,
         error_msg=error_msg,

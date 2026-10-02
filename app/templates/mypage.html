@@ -45,7 +45,7 @@
                     </li>
                     <li class="nav-item" role="presentation">
                         <button class="nav-link {% if active_tab == 'refunds' %}active{% endif %} fw-semibold" id="refunds-tab" data-bs-toggle="tab" data-bs-target="#refunds-tab-pane" type="button" role="tab" aria-controls="refunds-tab-pane" aria-selected="{% if active_tab == 'refunds' %}true{% else %}false{% endif %}">
-                            <i class="bi bi-arrow-counterclockwise me-1"></i>환불 내역
+                            <i class="bi bi-arrow-counterclockwise me-1"></i>환불 내역{% if refunds %}<span class="badge rounded-pill bg-warning text-dark ms-1 small">{{ refunds|length }}</span>{% endif %}
                         </button>
                     </li>
                 </ul>
@@ -305,6 +305,45 @@
 
                     <!-- 탭 3: 환불 내역 -->
                     <div class="tab-pane fade {% if active_tab == 'refunds' %}show active{% endif %}" id="refunds-tab-pane" role="tabpanel" aria-labelledby="refunds-tab" tabindex="0">
+                        {% if refunds and refunds|length > 0 %}
+                        <div class="table-responsive bg-white rounded-4 border shadow-sm mb-3">
+                            <table class="table align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="ps-4 py-3">신청일</th>
+                                        <th class="py-3">주문번호</th>
+                                        <th class="text-end py-3">환불금액</th>
+                                        <th class="text-center pe-4 py-3">처리상태</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for ref in refunds %}
+                                    <tr>
+                                        <td class="ps-4 py-3 text-muted small">
+                                            {{ ref.requested_at[:10] if ref.requested_at else '-' }}
+                                        </td>
+                                        <td class="py-3">
+                                            <span class="fw-semibold font-monospace">{{ ref.order_number }}</span>
+                                            {% if ref.reason %}
+                                            <div class="text-muted small mt-1">
+                                                <i class="bi bi-chat-left-dots me-1"></i>사유: {{ ref.reason }}
+                                            </div>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-end py-3 fw-bold text-dark">
+                                            {{ "{:,}".format(ref.display_refund_amount) }}원
+                                        </td>
+                                        <td class="text-center pe-4 py-3">
+                                            <span class="badge bg-{{ ref.badge_color }} px-3 py-2 rounded-pill">
+                                                {{ ref.status_text }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
                         <div class="text-center py-5">
                             <div class="rounded-circle bg-light d-inline-flex align-items-center justify-content-center p-4 mb-3 text-muted" style="width: 80px; height: 80px;">
                                 <i class="bi bi-arrow-counterclockwise fs-1"></i>
@@ -312,6 +351,7 @@
                             <h6 class="fw-bold mb-2">아직 환불 내역이 없습니다</h6>
                             <p class="text-muted small mb-0">진행 중이거나 완료된 취소/환불 내역이 없습니다.</p>
                         </div>
+                        {% endif %}
                     </div>
                 </div>
 
