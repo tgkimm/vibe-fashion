@@ -144,7 +144,11 @@ def login():
     next_url = request.args.get("next") or request.form.get("next") or ""
 
     if "user" in session:
-        return redirect(next_url or url_for("auth.mypage"))
+        if next_url and next_url.startswith("/"):
+            return redirect(next_url)
+        if session.get("user", {}).get("role") == "admin":
+            return redirect(url_for("admin_dashboard"))
+        return redirect(url_for("auth.mypage"))
 
     # URL 쿼리 파라미터로 전달된 에러 / 성공 메시지 파싱
     error_code = request.args.get("error", "")
@@ -194,14 +198,19 @@ def login():
 
                 display_name = extract_display_name(user)
                 real_name = extract_real_name(user)
+                user_role = "customer"
 
-                # profiles 테이블의 닉네임과 user_metadata의 실명 조회 및 동기화
+                # profiles 테이블의 닉네임, 실명 및 role 조회
                 try:
-                    p_res = supabase.table("profiles").select("name").eq("id", str(user.id)).execute()
+                    admin_client = get_supabase_admin_client()
+                    profile_client = admin_client or supabase
+                    p_res = profile_client.table("profiles").select("name, role").eq("id", str(user.id)).execute()
                     if p_res.data and len(p_res.data) > 0:
                         p_row = p_res.data[0]
                         if p_row.get("name"):
                             display_name = p_row.get("name")
+                        if p_row.get("role"):
+                            user_role = p_row.get("role")
                 except Exception as pe:
                     logger.warning(f"[로그인 프로필 조회 경고] {pe}")
 
@@ -211,6 +220,7 @@ def login():
                     "email": user.email,
                     "name": display_name,
                     "real_name": real_name or display_name,
+                    "role": user_role,
                 }
                 if auth_response.session and getattr(auth_response.session, "access_token", None):
                     save_auth_session(auth_response.session)
@@ -218,6 +228,8 @@ def login():
 
                 if next_url and next_url.startswith("/"):
                     return redirect(next_url)
+                if user_role == "admin":
+                    return redirect(url_for("admin_dashboard"))
                 return redirect(url_for("auth.mypage"))
             else:
                 redirect_params = {"error": "invalid_credentials"}
@@ -996,6 +1008,8 @@ def mypage():
                     p_real_name = profile.get("real_name")
                     if p_real_name:
                         user_info["real_name"] = p_real_name
+                    if profile.get("role"):
+                        user_info["role"] = profile.get("role")
 
             # 실명(이름) 최신화 및 가입 방식(이메일 vs 소셜) 확인
             if admin_client:
