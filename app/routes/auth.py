@@ -1020,10 +1020,60 @@ def mypage():
         except Exception as pe:
             logger.warning(f"[마이페이지 프로필 최신화 경고] {pe}")
 
+        # 주문 내역 조회 (최신순, order_items 조인)
+        orders = []
+        try:
+            client_to_use = admin_client or supabase
+            if client_to_use:
+                orders_res = (
+                    client_to_use.table("orders")
+                    .select("*, order_items(*)")
+                    .eq("user_id", user_info["id"])
+                    .order("created_at", desc=True)
+                    .execute()
+                )
+                raw_orders = orders_res.data or []
+                for ord_item in raw_orders:
+                    status_val = str(ord_item.get("status") or "").lower()
+                    # 상태별 배지 색상 및 텍스트 매핑
+                    # paid/preparing → primary, shipped → info, delivered → success, cancelled → secondary, refund_requested/refunded → warning
+                    if status_val in ("paid", "preparing"):
+                        badge_color = "primary"
+                        status_text = "결제완료" if status_val == "paid" else "상품준비중"
+                    elif status_val == "shipped":
+                        badge_color = "info"
+                        status_text = "배송중"
+                    elif status_val == "delivered":
+                        badge_color = "success"
+                        status_text = "배송완료"
+                    elif status_val in ("refund_requested", "refunded"):
+                        badge_color = "warning"
+                        status_text = "환불신청" if status_val == "refund_requested" else "환불완료"
+                    elif status_val == "cancelled":
+                        badge_color = "secondary"
+                        status_text = "주문취소"
+                    else:
+                        badge_color = "secondary"
+                        status_text = status_val.upper()
+
+                    ord_item["status_lower"] = status_val
+                    ord_item["badge_color"] = badge_color
+                    ord_item["status_text"] = status_text
+                    # 총 결제금액 숫자 포맷팅 대비
+                    ord_item["display_payment_amount"] = int(float(ord_item.get("payment_amount") or ord_item.get("total_amount") or 0))
+                    orders.append(ord_item)
+        except Exception as oe:
+            logger.warning(f"[마이페이지 주문 내역 조회 경고] {oe}")
+
+    # 현재 활성 탭 파라미터 (orders, refunds, profile)
+    active_tab = request.args.get("tab", "profile")
+
     return render_template(
         "mypage.html",
         user=session.get("user"),
         profile=profile,
+        orders=orders,
+        active_tab=active_tab,
         is_email_user=is_email_user,
         error_msg=error_msg,
         success_msg=success_msg

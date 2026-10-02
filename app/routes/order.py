@@ -596,3 +596,81 @@ def order_complete(order_id=None):
         logger.error(f"[주문 완료 조회 오류] {e}", exc_info=True)
         flash("주문 정보를 불러오는 중 오류가 발생했습니다.", "error")
         return redirect(url_for("main.index"))
+
+
+@order_bp.route("/refund", methods=["POST"])
+def request_refund():
+    """
+    주문 환불 신청 처리: POST /order/refund
+    - 로그인 필수
+    - delivered 상태인 본인 주문에 대해서만 환불 신청 가능
+    - refunds 테이블에 기록 및 orders 상태 갱신
+    """
+    user = session.get("user")
+    if not user or not user.get("id"):
+        flash("로그인이 필요한 서비스입니다.", "warning")
+        return redirect(url_for("auth.login"))
+
+    user_id = user["id"]
+    order_id = request.form.get("order_id", "").strip()
+    reason = request.form.get("reason", "").strip() or "고객 변심 / 단순 환불 요청"
+
+    if not order_id:
+        flash("환불을 신청할 주문 정보가 올바르지 않습니다.", "warning")
+        return redirect(url_for("auth.mypage", tab="orders"))
+
+    admin_supabase = get_supabase_admin_client()
+    if not admin_supabase:
+        flash("데이터베이스 연결에 실패했습니다.", "error")
+        return redirect(url_for("auth.mypage", tab="orders"))
+
+    try:
+        # 본인 주문 확인
+        order_res = (
+            admin_supabase.table("orders")
+            .select("*")
+            .eq("id", order_id)
+            .single()
+            .execute()
+        )
+        order_data = order_res.data
+        if not order_data:
+            flash("주문 내역을 찾을 수 없습니다.", "warning")
+            return redirect(url_for("auth.mypage", tab="orders"))
+
+        if str(order_data.get("user_id")) != str(user_id):
+            flash("해당 주문에 대한 권한이 없습니다.", "error")
+            return redirect(url_for("auth.mypage", tab="orders"))
+
+        current_status = str(order_data.get("status") or "").upper()
+        if current_status != "DELIVERED":
+            flash("배송완료(delivered) 상태의 주문만 환불 신청이 가능합니다.", "warning")
+            return redirect(url_for("auth.mypage", tab="orders"))
+
+        refund_amount = float(order_data.get("payment_amount") or order_data.get("total_amount") or 0)
+
+        # 1. refunds 테이블에 환불 요청 생성
+        try:
+            admin_supabase.table("refunds").insert({
+                "order_id": order_id,
+                "user_id": user_id,
+                "reason": reason,
+                "refund_amount": refund_amount,
+                "status": "REQUESTED"
+            }).execute()
+        except Exception as re:
+            logger.warning(f"[refunds 테이블 INSERT 경고] {re}")
+
+        # 2. orders 테이블 상태 업데이트 ('REFUNDED')
+        try:
+            admin_supabase.table("orders").update({"status": "REFUNDED"}).eq("id", order_id).execute()
+        except Exception as oe:
+            logger.warning(f"[orders 상태 업데이트 경고] {oe}")
+
+        flash("환불 신청이 정상적으로 접수되었습니다.", "success")
+        return redirect(url_for("auth.mypage", tab="orders"))
+
+    except Exception as e:
+        logger.error(f"[환불 신청 오류] {e}")
+        flash("환불 신청 처리 중 오류가 발생했습니다.", "error")
+        return redirect(url_for("auth.mypage", tab="orders"))

@@ -34,17 +34,17 @@
                 <!-- Bootstrap 5 nav-tabs 3개 -->
                 <ul class="nav nav-tabs nav-fill mb-4" id="myPageTab" role="tablist">
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link active fw-semibold" id="profile-tab" data-bs-toggle="tab" data-bs-target="#profile-tab-pane" type="button" role="tab" aria-controls="profile-tab-pane" aria-selected="true">
+                        <button class="nav-link {% if active_tab != 'orders' and active_tab != 'refunds' %}active{% endif %} fw-semibold" id="profile-tab" data-bs-toggle="tab" data-bs-target="#profile-tab-pane" type="button" role="tab" aria-controls="profile-tab-pane" aria-selected="{% if active_tab != 'orders' and active_tab != 'refunds' %}true{% else %}false{% endif %}">
                             <i class="bi bi-person me-1"></i>내 정보
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link fw-semibold" id="orders-tab" data-bs-toggle="tab" data-bs-target="#orders-tab-pane" type="button" role="tab" aria-controls="orders-tab-pane" aria-selected="false">
-                            <i class="bi bi-bag-check me-1"></i>주문 내역
+                        <button class="nav-link {% if active_tab == 'orders' %}active{% endif %} fw-semibold" id="orders-tab" data-bs-toggle="tab" data-bs-target="#orders-tab-pane" type="button" role="tab" aria-controls="orders-tab-pane" aria-selected="{% if active_tab == 'orders' %}true{% else %}false{% endif %}">
+                            <i class="bi bi-bag-check me-1"></i>주문 내역{% if orders %}<span class="badge rounded-pill bg-primary ms-1 small">{{ orders|length }}</span>{% endif %}
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link fw-semibold" id="refunds-tab" data-bs-toggle="tab" data-bs-target="#refunds-tab-pane" type="button" role="tab" aria-controls="refunds-tab-pane" aria-selected="false">
+                        <button class="nav-link {% if active_tab == 'refunds' %}active{% endif %} fw-semibold" id="refunds-tab" data-bs-toggle="tab" data-bs-target="#refunds-tab-pane" type="button" role="tab" aria-controls="refunds-tab-pane" aria-selected="{% if active_tab == 'refunds' %}true{% else %}false{% endif %}">
                             <i class="bi bi-arrow-counterclockwise me-1"></i>환불 내역
                         </button>
                     </li>
@@ -52,7 +52,7 @@
 
                 <div class="tab-content" id="myPageTabContent">
                     <!-- 탭 1: 내 정보 -->
-                    <div class="tab-pane fade show active" id="profile-tab-pane" role="tabpanel" aria-labelledby="profile-tab" tabindex="0">
+                    <div class="tab-pane fade {% if active_tab != 'orders' and active_tab != 'refunds' %}show active{% endif %}" id="profile-tab-pane" role="tabpanel" aria-labelledby="profile-tab" tabindex="0">
                         <!-- profiles 테이블 조회 정보 표시 -->
                         <div class="bg-light bg-opacity-50 rounded-4 p-4 mb-4 border">
                             <h6 class="fw-bold mb-3 text-secondary">
@@ -181,7 +181,115 @@
                     </div>
 
                     <!-- 탭 2: 주문 내역 -->
-                    <div class="tab-pane fade" id="orders-tab-pane" role="tabpanel" aria-labelledby="orders-tab" tabindex="0">
+                    <div class="tab-pane fade {% if active_tab == 'orders' %}show active{% endif %}" id="orders-tab-pane" role="tabpanel" aria-labelledby="orders-tab" tabindex="0">
+                        {% if orders and orders|length > 0 %}
+                        <div class="accordion accordion-flush" id="ordersAccordion">
+                            {% for ord in orders %}
+                            <div class="card border rounded-4 mb-3 overflow-hidden shadow-sm">
+                                <div class="card-header bg-white p-3 p-md-4 border-0">
+                                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="badge bg-{{ ord.badge_color }} px-3 py-2 fs-6 rounded-pill">
+                                                {{ ord.status_text }}
+                                            </span>
+                                            <span class="text-muted small">
+                                                {{ ord.created_at[:10] if ord.created_at else '' }}
+                                            </span>
+                                        </div>
+                                        <div class="d-flex align-items-center gap-2">
+                                            {% if ord.status_lower == 'delivered' %}
+                                            <button type="button" class="btn btn-outline-danger btn-sm rounded-pill px-3 py-1 btn-refund-modal"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#refundModal"
+                                                data-order-id="{{ ord.id }}"
+                                                data-order-number="{{ ord.order_number }}">
+                                                <i class="bi bi-arrow-return-left me-1"></i>환불 신청
+                                            </button>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                                        <div>
+                                            <span class="text-muted small d-block">주문번호</span>
+                                            <span class="fw-bold text-dark font-monospace">{{ ord.order_number }}</span>
+                                        </div>
+                                        <div class="text-end">
+                                            <span class="text-muted small d-block">총 결제금액</span>
+                                            <span class="fw-bold text-primary fs-5">{{ "{:,}".format(ord.display_payment_amount) }}원</span>
+                                        </div>
+                                    </div>
+                                    <div class="mt-3 pt-3 border-top d-flex justify-content-between align-items-center">
+                                        <span class="small text-muted">
+                                            <i class="bi bi-box-seam me-1"></i>주문 상품 {{ ord.order_items|length if ord.order_items else 0 }}건
+                                        </span>
+                                        <button class="btn btn-sm btn-link text-decoration-none fw-semibold text-primary p-0 collapsed"
+                                            type="button"
+                                            data-bs-toggle="collapse"
+                                            data-bs-target="#collapseOrder{{ loop.index }}"
+                                            aria-expanded="false"
+                                            aria-controls="collapseOrder{{ loop.index }}">
+                                            상세보기 <i class="bi bi-chevron-down ms-1"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- 아코디언 상세 내용 (order_items) -->
+                                <div id="collapseOrder{{ loop.index }}" class="collapse border-top bg-light bg-opacity-50" data-bs-parent="#ordersAccordion">
+                                    <div class="p-3 p-md-4">
+                                        <h6 class="fw-bold text-muted small mb-3">
+                                            <i class="bi bi-receipt me-1"></i>주문 상품 정보
+                                        </h6>
+                                        <div class="table-responsive bg-white rounded-3 border">
+                                            <table class="table align-middle mb-0 table-sm">
+                                                <thead class="table-light">
+                                                    <tr>
+                                                        <th class="ps-3 py-2">상품명</th>
+                                                        <th class="py-2">옵션 (색상/사이즈)</th>
+                                                        <th class="text-center py-2">수량</th>
+                                                        <th class="text-end pe-3 py-2">가격</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for item in ord.order_items %}
+                                                    <tr>
+                                                        <td class="ps-3 py-2 fw-semibold">
+                                                            {{ item.product_name }}
+                                                        </td>
+                                                        <td class="py-2 text-muted small">
+                                                            {{ item.option_name or '-' }}
+                                                        </td>
+                                                        <td class="text-center py-2">
+                                                            {{ item.quantity }}개
+                                                        </td>
+                                                        <td class="text-end pe-3 py-2 fw-semibold">
+                                                            {{ "{:,}".format((item.total_price or item.unit_price * item.quantity)|int) }}원
+                                                        </td>
+                                                    </tr>
+                                                    {% else %}
+                                                    <tr>
+                                                        <td colspan="4" class="text-center text-muted py-3">주문 상품 정보가 없습니다.</td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                        {% if ord.shipping_address %}
+                                        <div class="mt-3 p-3 bg-white rounded-3 border small">
+                                            <div class="fw-bold text-muted mb-1"><i class="bi bi-geo-alt me-1"></i>배송지 정보</div>
+                                            <div><strong>수령인:</strong> {{ ord.shipping_address.recipient_name or '' }} ({{ ord.shipping_address.phone_number or '' }})</div>
+                                            <div class="text-break"><strong>주소:</strong> {{ ord.shipping_address.address or '' }}</div>
+                                            {% if ord.shipping_address.memo %}
+                                            <div class="text-muted"><strong>요청사항:</strong> {{ ord.shipping_address.memo }}</div>
+                                            {% endif %}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
                         <div class="text-center py-5">
                             <div class="rounded-circle bg-light d-inline-flex align-items-center justify-content-center p-4 mb-3 text-muted" style="width: 80px; height: 80px;">
                                 <i class="bi bi-bag-x fs-1"></i>
@@ -192,10 +300,11 @@
                                 <i class="bi bi-grid me-1"></i>상품 둘러보기
                             </a>
                         </div>
+                        {% endif %}
                     </div>
 
                     <!-- 탭 3: 환불 내역 -->
-                    <div class="tab-pane fade" id="refunds-tab-pane" role="tabpanel" aria-labelledby="refunds-tab" tabindex="0">
+                    <div class="tab-pane fade {% if active_tab == 'refunds' %}show active{% endif %}" id="refunds-tab-pane" role="tabpanel" aria-labelledby="refunds-tab" tabindex="0">
                         <div class="text-center py-5">
                             <div class="rounded-circle bg-light d-inline-flex align-items-center justify-content-center p-4 mb-3 text-muted" style="width: 80px; height: 80px;">
                                 <i class="bi bi-arrow-counterclockwise fs-1"></i>
@@ -221,6 +330,40 @@
                     </button>
                 </div>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- 환불 신청 모달 -->
+<div class="modal fade" id="refundModal" tabindex="-1" aria-labelledby="refundModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header border-bottom-0">
+                <h5 class="modal-title fw-bold" id="refundModalLabel">
+                    <i class="bi bi-arrow-return-left text-danger me-2"></i>주문 환불 신청
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('order.request_refund') }}">
+                <div class="modal-body py-2">
+                    <input type="hidden" name="order_id" id="refundOrderId">
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">주문번호</label>
+                        <div class="fw-bold font-monospace fs-6" id="refundOrderNumber">-</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="refundReason" class="form-label small fw-semibold">환불 사유 (선택)</label>
+                        <textarea class="form-control rounded-3" id="refundReason" name="reason" rows="3" placeholder="환불 요청 사유를 작성해 주세요. (예: 단순 변심, 사이즈 불일치 등)"></textarea>
+                    </div>
+                    <div class="alert alert-warning py-2 px-3 small rounded-3 mb-0">
+                        <i class="bi bi-exclamation-circle me-1"></i>배송완료된 상품의 환불 신청 시, 상품 회수 및 검수 후 결제 취소가 진행됩니다.
+                    </div>
+                </div>
+                <div class="modal-footer border-top-0">
+                    <button type="button" class="btn btn-light rounded-3" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-danger rounded-3 px-3">환불 신청하기</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -412,6 +555,18 @@ document.addEventListener("DOMContentLoaded", () => {
         newPwInput.addEventListener("input", checkMypagePwRules);
         newPwConfirm.addEventListener("input", checkMypagePwMatch);
     }
+
+    // 환불 신청 모달 바인딩
+    const refundOrderIdInput = document.getElementById("refundOrderId");
+    const refundOrderNumberSpan = document.getElementById("refundOrderNumber");
+    document.querySelectorAll(".btn-refund-modal").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const orderId = btn.getAttribute("data-order-id");
+            const orderNumber = btn.getAttribute("data-order-number");
+            if (refundOrderIdInput) refundOrderIdInput.value = orderId;
+            if (refundOrderNumberSpan) refundOrderNumberSpan.textContent = orderNumber;
+        });
+    });
 });
 </script>
 {% endblock %}
