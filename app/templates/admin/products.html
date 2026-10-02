@@ -40,10 +40,14 @@
                     <h3 class="fw-bold mb-1">상품 관리</h3>
                     <p class="text-muted small mb-0">등록된 전체 상품 목록을 조회하고 재고 및 판매 상태를 확인하세요.</p>
                 </div>
-                <div>
+                <div class="d-flex align-items-center gap-2">
                     <span class="badge bg-light text-dark border px-3 py-2 rounded-pill">
-                        총 <strong class="text-primary">{{ products|length }}</strong>개 상품
+                        총 <strong class="text-primary" id="totalProductCount">{{ products|length }}</strong>개 상품
                     </span>
+                    <button type="button" class="btn btn-primary d-flex align-items-center gap-2 px-3 py-2 rounded-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#createProductModal">
+                        <i class="bi bi-plus-lg"></i>
+                        <span>신규 상품 등록</span>
+                    </button>
                 </div>
             </div>
 
@@ -65,7 +69,7 @@
                                 <th scope="col" class="text-center pe-4" style="min-width: 100px;">활성상태</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="productTableBody">
                             {% if products %}
                                 {% for product in products %}
                                 <tr>
@@ -137,7 +141,7 @@
                                 </tr>
                                 {% endfor %}
                             {% else %}
-                                <tr>
+                                <tr id="emptyProductRow">
                                     <td colspan="6" class="text-center py-5 text-muted">
                                         <i class="bi bi-box-seam fs-2 d-block mb-2 text-secondary"></i>
                                         등록된 상품이 없습니다.
@@ -151,4 +155,313 @@
         </main>
     </div>
 </div>
+
+<!-- 신규 상품 등록 모달 -->
+<div class="modal fade" id="createProductModal" tabindex="-1" aria-labelledby="createProductModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow rounded-4 overflow-hidden">
+            <div class="modal-header bg-light border-0 py-3 px-4">
+                <h5 class="modal-title fw-bold" id="createProductModalLabel">
+                    <i class="bi bi-plus-circle me-2 text-primary"></i>신규 상품 등록
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+            </div>
+            <form id="createProductForm" novalidate>
+                <div class="modal-body p-4">
+                    <!-- 오류 메시지 알림 영역 -->
+                    <div id="modalAlertError" class="alert alert-danger d-none py-2 px-3 small rounded-3 mb-3" role="alert">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i><span id="modalAlertErrorMsg"></span>
+                    </div>
+
+                    <div class="row g-3">
+                        <!-- 상품 이름 -->
+                        <div class="col-12 col-md-8">
+                            <label for="productName" class="form-label fw-semibold small">상품 이름 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control rounded-3" id="productName" name="name" placeholder="예: 오버핏 코튼 자켓" required>
+                            <div class="invalid-feedback">상품 이름을 입력해 주세요.</div>
+                        </div>
+
+                        <!-- 카테고리 -->
+                        <div class="col-12 col-md-4">
+                            <label for="productCategory" class="form-label fw-semibold small">카테고리</label>
+                            <select class="form-select rounded-3" id="productCategory" name="category_id">
+                                <option value="">카테고리 선택</option>
+                                {% for cat in categories %}
+                                <option value="{{ cat.id }}">{{ cat.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <!-- 가격 -->
+                        <div class="col-12 col-md-6">
+                            <label for="productPrice" class="form-label fw-semibold small">가격 (판매가) <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="number" class="form-control rounded-start-3" id="productPrice" name="price" placeholder="예: 39000" min="1" step="1" required>
+                                <span class="input-group-text rounded-end-3">원</span>
+                                <div class="invalid-feedback">가격은 0보다 커야 합니다.</div>
+                            </div>
+                            <div class="form-text small text-muted">고객에게 실제 판매되는 금액입니다. (0원 초과)</div>
+                        </div>
+
+                        <!-- 정가 -->
+                        <div class="col-12 col-md-6">
+                            <label for="productOriginalPrice" class="form-label fw-semibold small">정가 (원래 가격) <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="number" class="form-control rounded-start-3" id="productOriginalPrice" name="original_price" placeholder="예: 49000" min="1" step="1" required>
+                                <span class="input-group-text rounded-end-3">원</span>
+                                <div class="invalid-feedback">정가는 가격보다 작을 수 없습니다.</div>
+                            </div>
+                            <div class="form-text small text-muted">할인 전 정가입니다. 가격 이상이어야 합니다.</div>
+                        </div>
+
+                        <!-- 대표 이미지 URL -->
+                        <div class="col-12">
+                            <label for="productImageUrl" class="form-label fw-semibold small">이미지 URL</label>
+                            <input type="url" class="form-control rounded-3" id="productImageUrl" name="image_url" placeholder="https://example.com/image.jpg 또는 /static/images/products/sample.jpg">
+                            <div class="form-text small text-muted">외부 이미지 링크나 static 이미지 경로를 입력하세요.</div>
+                        </div>
+
+                        <!-- 설명 -->
+                        <div class="col-12">
+                            <label for="productDescription" class="form-label fw-semibold small">상품 설명</label>
+                            <textarea class="form-control rounded-3" id="productDescription" name="description" rows="3" placeholder="상품에 대한 상세 설명을 입력하세요."></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light border-0 py-3 px-4">
+                    <button type="button" class="btn btn-outline-secondary rounded-3 px-4" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-primary rounded-3 px-4 fw-semibold" id="submitProductBtn">
+                        <span class="spinner-border spinner-border-sm d-none me-1" id="submitSpinner" role="status" aria-hidden="true"></span>
+                        <span id="submitBtnText">등록하기</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 알림 토스트 (Toast) -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1080;">
+    <div id="adminToast" class="toast align-items-center text-bg-dark border-0 rounded-4 shadow" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex align-items-center">
+            <div class="toast-body d-flex align-items-center gap-2">
+                <i class="bi bi-check-circle-fill text-success fs-5"></i>
+                <span id="adminToastMessage">상품이 성공적으로 등록되었습니다.</span>
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const createModalEl = document.getElementById("createProductModal");
+    const createProductModal = new bootstrap.Modal(createModalEl);
+    const form = document.getElementById("createProductForm");
+    const submitBtn = document.getElementById("submitProductBtn");
+    const submitSpinner = document.getElementById("submitSpinner");
+    const submitBtnText = document.getElementById("submitBtnText");
+    const errorAlert = document.getElementById("modalAlertError");
+    const errorAlertMsg = document.getElementById("modalAlertErrorMsg");
+    const toastEl = document.getElementById("adminToast");
+    const toastMessage = document.getElementById("adminToastMessage");
+    const toast = new bootstrap.Toast(toastEl, { delay: 3500 });
+
+    const priceInput = document.getElementById("productPrice");
+    const originalPriceInput = document.getElementById("productOriginalPrice");
+
+    // 가격 변경 시 정가 기본값 추천 (정가가 비어있는 경우)
+    priceInput.addEventListener("blur", function () {
+        if (priceInput.value && !originalPriceInput.value) {
+            originalPriceInput.value = priceInput.value;
+        }
+    });
+
+    // 모달 닫힐 때 폼 초기화 및 에러 알림 숨김
+    createModalEl.addEventListener("hidden.bs.modal", function () {
+        form.reset();
+        form.classList.remove("was-validated");
+        errorAlert.classList.add("d-none");
+        errorAlertMsg.textContent = "";
+        submitBtn.disabled = false;
+        submitSpinner.classList.add("d-none");
+        submitBtnText.textContent = "등록하기";
+    });
+
+    // 폼 제출 이벤트 처리
+    form.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        errorAlert.classList.add("d-none");
+
+        const name = document.getElementById("productName").value.trim();
+        const categoryId = document.getElementById("productCategory").value;
+        const price = parseFloat(priceInput.value);
+        const originalPrice = parseFloat(originalPriceInput.value);
+        const imageUrl = document.getElementById("productImageUrl").value.trim();
+        const description = document.getElementById("productDescription").value.trim();
+
+        // 클라이언트 측 유효성 검사
+        let isValid = true;
+        if (!name) {
+            document.getElementById("productName").classList.add("is-invalid");
+            isValid = false;
+        } else {
+            document.getElementById("productName").classList.remove("is-invalid");
+        }
+
+        if (isNaN(price) || price <= 0) {
+            priceInput.classList.add("is-invalid");
+            isValid = false;
+        } else {
+            priceInput.classList.remove("is-invalid");
+        }
+
+        if (isNaN(originalPrice) || originalPrice < price) {
+            originalPriceInput.classList.add("is-invalid");
+            isValid = false;
+        } else {
+            originalPriceInput.classList.remove("is-invalid");
+        }
+
+        if (!isValid) {
+            return;
+        }
+
+        // 로딩 상태 시작
+        submitBtn.disabled = true;
+        submitSpinner.classList.remove("d-none");
+        submitBtnText.textContent = "등록 중...";
+
+        try {
+            const response = await fetch("{{ url_for('admin_products') }}", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+                body: JSON.stringify({
+                    name: name,
+                    category_id: categoryId || null,
+                    price: price,
+                    original_price: originalPrice,
+                    image_url: imageUrl || "",
+                    description: description || "",
+                }),
+            });
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                const errMsg = result.message || "상품 등록 중 오류가 발생했습니다.";
+                errorAlertMsg.textContent = errMsg;
+                errorAlert.classList.remove("d-none");
+                submitBtn.disabled = false;
+                submitSpinner.classList.add("d-none");
+                submitBtnText.textContent = "등록하기";
+                return;
+            }
+
+            // 1. 모달 닫기
+            createProductModal.hide();
+
+            // 2. JS로 상품 목록 동적 추가 (페이지 리로드 없이 처리)
+            addProductToTable(result.product);
+
+            // 3. 성공 토스트 표시
+            toastMessage.textContent = result.message || "상품이 성공적으로 등록되었습니다.";
+            toast.show();
+
+        } catch (error) {
+            console.error("상품 등록 통신 에러:", error);
+            errorAlertMsg.textContent = "서버 통신 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.";
+            errorAlert.classList.remove("d-none");
+            submitBtn.disabled = false;
+            submitSpinner.classList.add("d-none");
+            submitBtnText.textContent = "등록하기";
+        }
+    });
+
+    // 새 상품을 테이블 맨 위에 동적으로 삽입하는 함수
+    function addProductToTable(product) {
+        const tbody = document.getElementById("productTableBody");
+        if (!tbody) return;
+
+        // '등록된 상품이 없습니다' 안내 행이 있으면 제거
+        const emptyRow = document.getElementById("emptyProductRow");
+        if (emptyRow) {
+            emptyRow.remove();
+        }
+
+        const tr = document.createElement("tr");
+
+        const formattedPrice = Number(product.price).toLocaleString();
+        let originalPriceHtml = "";
+        if (product.original_price && Number(product.original_price) > Number(product.price)) {
+            originalPriceHtml = `<span class="text-muted text-decoration-line-through small">${Number(product.original_price).toLocaleString()}원</span>`;
+        } else {
+            const orig = product.original_price || product.price;
+            originalPriceHtml = `<span class="text-muted small">${Number(orig).toLocaleString()}원</span>`;
+        }
+
+        let imgHtml = "";
+        if (product.thumbnail_url) {
+            imgHtml = `<img src="${escapeHtml(product.thumbnail_url)}" alt="${escapeHtml(product.name)}" class="rounded-3 me-3 flex-shrink-0" style="width: 48px; height: 48px; object-fit: cover;" onerror="this.onerror=null; this.src='https://picsum.photos/600/800';">`;
+        } else {
+            imgHtml = `<div class="rounded-3 bg-light d-flex align-items-center justify-content-center me-3 flex-shrink-0" style="width: 48px; height: 48px;"><i class="bi bi-image text-muted fs-5"></i></div>`;
+        }
+
+        tr.innerHTML = `
+            <td class="ps-4">
+                <div class="d-flex align-items-center">
+                    ${imgHtml}
+                    <div class="text-truncate">
+                        <div class="fw-semibold text-dark text-truncate">${escapeHtml(product.name)}</div>
+                        <small class="text-muted text-truncate d-block" style="max-width: 320px;">${escapeHtml(product.description || '-')}</small>
+                    </div>
+                </div>
+            </td>
+            <td>
+                <span class="badge bg-secondary-subtle text-secondary px-2.5 py-1.5 rounded-pill fw-medium">
+                    ${escapeHtml(product.category_name || '미지정')}
+                </span>
+            </td>
+            <td class="text-end fw-bold text-dark">
+                ${formattedPrice}원
+            </td>
+            <td class="text-end">
+                ${originalPriceHtml}
+            </td>
+            <td class="text-end">
+                <span class="badge bg-danger-subtle text-danger px-2 py-1 rounded-pill fw-semibold">품절 (0)</span>
+            </td>
+            <td class="text-center pe-4">
+                <span class="badge bg-success-subtle text-success px-2.5 py-1.5 rounded-pill fw-medium">
+                    <i class="bi bi-check-circle-fill me-1"></i>활성
+                </span>
+            </td>
+        `;
+
+        // 테이블 최상단에 새 상품 추가
+        tbody.prepend(tr);
+
+        // 총 상품 수 카운트 업데이트
+        const countEl = document.getElementById("totalProductCount");
+        if (countEl) {
+            const currentCount = parseInt(countEl.textContent.replace(/[^0-9]/g, ""), 10) || 0;
+            countEl.textContent = (currentCount + 1).toLocaleString();
+        }
+    }
+
+    // 간단한 HTML 특수문자 이스케이프 함수
+    function escapeHtml(text) {
+        if (!text) return "";
+        return String(text)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+});
+</script>
 {% endblock %}

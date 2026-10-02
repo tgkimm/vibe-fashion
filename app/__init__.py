@@ -203,23 +203,148 @@ def create_app():
             recent_orders=recent_orders,
         )
 
-    @app.route("/admin/products")
+    @app.route("/admin/products", methods=["GET", "POST"])
     @login_required
     @admin_required
     def admin_products():
         """
-        관리자 상품 관리 페이지: GET /admin/products
-        - DB의 전체 상품을 조회하여 목록 테이블로 표시
-        - 이름, 카테고리, 가격, 정가, 재고, 활성상태 컬럼 표시
+        관리자 상품 관리 페이지:
+        - GET /admin/products: 전체 상품 및 카테고리 목록 조회
+        - POST /admin/products: 신규 상품 등록 (JSON 또는 Form 요청)
         """
-        from flask import render_template
+        from flask import render_template, request, jsonify
         from app.utils import get_supabase_admin_client, get_supabase_client
 
         admin_client = get_supabase_admin_client()
         db_client = admin_client or get_supabase_client()
 
+        # POST 요청 처리: 신규 상품 등록
+        if request.method == "POST":
+            if not db_client:
+                return jsonify({"success": False, "message": "데이터베이스 연결에 실패했습니다."}), 500
+
+            data = request.get_json(silent=True) or request.form
+
+            name = (data.get("name") or "").strip()
+            category_id = data.get("category_id")
+            description = (data.get("description") or "").strip()
+            image_url = (data.get("image_url") or "").strip()
+            raw_price = data.get("price")
+            raw_original_price = data.get("original_price") if "original_price" in data else data.get("sale_price")
+
+            # 1. 필수 필드 및 유효성 검증
+            if not name:
+                return jsonify({"success": False, "message": "상품 이름을 입력해 주세요."}), 400
+
+            try:
+                price = float(raw_price) if raw_price is not None and str(raw_price).strip() != "" else 0
+            except (ValueError, TypeError):
+                return jsonify({"success": False, "message": "유효한 가격을 입력해 주세요."}), 400
+
+            if price <= 0:
+                return jsonify({"success": False, "message": "가격은 0보다 커야 합니다."}), 400
+
+            # 정가 검증: 정가는 가격보다 작을 수 없음
+            original_price = None
+            if raw_original_price is not None and str(raw_original_price).strip() != "":
+                try:
+                    original_price = float(raw_original_price)
+                except (ValueError, TypeError):
+                    return jsonify({"success": False, "message": "유효한 정가를 입력해 주세요."}), 400
+
+                if original_price < price:
+                    return jsonify({"success": False, "message": "정가는 가격보다 작을 수 없습니다."}), 400
+            else:
+                # 정가가 명시되지 않았으면 기본적으로 판매가격과 동일하게 설정
+                original_price = price
+
+            # 카테고리 ID 정수 변환 (선택 사항 또는 유효한 카테고리)
+            parsed_category_id = None
+            if category_id:
+                try:
+                    parsed_category_id = int(category_id)
+                except (ValueError, TypeError):
+                    parsed_category_id = None
+
+            try:
+                # 2. products 테이블에 저장 (is_active=true 명시적 삽입)
+                # 스키마 매핑:
+                # schema.sql: price NUMERIC (정가/기본가격), sale_price NUMERIC (할인가/판매가)
+                # 정가(original_price)와 가격(price)의 관계:
+                # original_price > price 인 경우 할인 상품 -> price=original_price, sale_price=price
+                # original_price == price 인 경우 일반 상품 -> price=price, sale_price=NULL
+                db_price = original_price
+                db_sale_price = price if original_price > price else None
+
+                product_insert_payload = {
+                    "name": name,
+                    "description": description or None,
+                    "price": db_price,
+                    "sale_price": db_sale_price,
+                    "is_active": True,
+                }
+                if parsed_category_id is not None:
+                    product_insert_payload["category_id"] = parsed_category_id
+
+                prod_res = db_client.table("products").insert(product_insert_payload).execute()
+                new_product = prod_res.data[0] if (prod_res.data and len(prod_res.data) > 0) else None
+
+                if not new_product:
+                    return jsonify({"success": False, "message": "상품 등록에 실패했습니다."}), 500
+
+                new_product_id = new_product.get("id")
+
+                # 3. 이미지 URL이 제공된 경우 product_images 테이블에 등록
+                if image_url and new_product_id:
+                    try:
+                        db_client.table("product_images").insert({
+                            "product_id": new_product_id,
+                            "image_url": image_url,
+                            "is_primary": True,
+                            "sort_order": 1,
+                        }).execute()
+                    except Exception as img_err:
+                        app.logger.warning(f"[상품 이미지 등록 오류] {img_err}")
+
+                # 4. 등록된 상품 정보 조회 및 반환 (목록 즉시 반영용)
+                # 카테고리명 조회
+                category_name = "미지정"
+                if parsed_category_id:
+                    cat_check = db_client.table("categories").select("name").eq("id", parsed_category_id).execute()
+                    if cat_check.data:
+                        category_name = cat_check.data[0].get("name") or "미지정"
+
+                return jsonify({
+                    "success": True,
+                    "message": "신규 상품이 성공적으로 등록되었습니다.",
+                    "product": {
+                        "id": new_product_id,
+                        "name": new_product.get("name"),
+                        "description": new_product.get("description") or "",
+                        "category_name": category_name,
+                        "price": price,
+                        "original_price": original_price,
+                        "total_stock": 0,
+                        "is_active": True,
+                        "thumbnail_url": image_url or "",
+                    }
+                }), 201
+
+            except Exception as e:
+                app.logger.error(f"[신규 상품 등록 오류] {e}", exc_info=True)
+                return jsonify({"success": False, "message": f"상품 등록 중 오류가 발생했습니다: {str(e)}"}), 500
+
+        # GET 요청 처리: 상품 목록 및 카테고리 목록 조회
         products = []
+        categories = []
         if db_client:
+            try:
+                # 카테고리 목록 조회
+                cat_res = db_client.table("categories").select("id, name, slug").order("sort_order", desc=False).execute()
+                categories = cat_res.data or []
+            except Exception as e:
+                app.logger.warning(f"[관리자 카테고리 목록 조회 오류] {e}")
+
             try:
                 # RLS를 우회/관리자 권한으로 비활성 상품 포함 전체 상품 조회
                 res = (
@@ -281,7 +406,7 @@ def create_app():
             except Exception as e:
                 app.logger.error(f"[관리자 상품 목록 조회 오류] {e}", exc_info=True)
 
-        return render_template("admin/products.html", products=products)
+        return render_template("admin/products.html", products=products, categories=categories)
 
     # 5. 템플릿 전역 변수 및 컨텍스트 프로세서 등록
     @app.context_processor
