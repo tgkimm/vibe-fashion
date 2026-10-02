@@ -209,17 +209,26 @@ def add_to_cart():
             logger.info(f"[장바구니 추가] product_id={product_id}, color={color}, size={size} (옵션 검색 중)")
             
             if product_id:
-                opt_query = supabase.table("product_options").select("id, color, size").eq("product_id", product_id)
+                opt_query = (
+                    supabase.table("product_options")
+                    .select("id, color, size, stock, stock_quantity")
+                    .eq("product_id", product_id)
+                )
                 if color:
                     opt_query = opt_query.eq("color", color)
                 if size:
                     opt_query = opt_query.eq("size", size)
-                opt_res = opt_query.limit(1).execute()
-                
+                opt_res = opt_query.order("id").execute()
+
                 logger.info(f"[장바구니 추가] 옵션 조회 결과: {len(opt_res.data or [])}개")
-                if opt_res.data:
-                    logger.info(f"[장바구니 추가] 찾은 옵션: {opt_res.data[0]}")
-                    product_option_id = opt_res.data[0]["id"]
+                # 첫 옵션이 품절(Black/S 등)일 수 있으므로 재고가 충분한 첫 옵션을 선택
+                in_stock = [o for o in (opt_res.data or []) if _get_stock(o) >= quantity]
+                if in_stock:
+                    logger.info(f"[장바구니 추가] 찾은 옵션: {in_stock[0]}")
+                    product_option_id = in_stock[0]["id"]
+                elif opt_res.data:
+                    logger.warning("[장바구니 추가] 해당 상품의 모든 옵션이 재고 부족")
+                    return jsonify({"success": False, "message": "선택하신 상품은 현재 품절 상태입니다."}), 400
                 else:
                     logger.warning(f"[장바구니 추가] 매칭하는 옵션을 찾을 수 없음 (color={color}, size={size})")
 
