@@ -225,7 +225,7 @@ def create_app():
         if db_client:
             try:
                 query = db_client.table("orders").select(
-                    "order_number, created_at, total_amount, payment_amount, status, profiles(email)"
+                    "id, order_number, created_at, total_amount, payment_amount, status, profiles(email)"
                 )
                 if selected_status:
                     query = query.eq("status", selected_status.upper())
@@ -247,6 +247,7 @@ def create_app():
 
                     profile = order.get("profiles") or {}
                     orders.append({
+                        "id": order.get("id"),
                         "order_number": order.get("order_number") or "-",
                         "created_at": created_at_formatted,
                         "customer_email": profile.get("email") or "미등록",
@@ -264,6 +265,201 @@ def create_app():
             order_number_search=order_number_search,
             email_search=email_search,
         )
+
+    @app.route("/admin/refunds")
+    @login_required
+    @admin_required
+    def admin_refunds():
+        from datetime import datetime, timedelta, timezone
+        from flask import render_template
+        from app.utils import get_supabase_admin_client, get_supabase_client
+
+        admin_client = get_supabase_admin_client()
+        db_client = admin_client or get_supabase_client()
+        refunds = []
+
+        if db_client:
+            try:
+                refunds_res = (
+                    db_client.table("refunds")
+                    .select("id, reason, requested_at, status, orders(order_number, total_amount, payment_amount)")
+                    .order("requested_at", desc=True)
+                    .execute()
+                )
+                kst = timezone(timedelta(hours=9))
+                for refund in refunds_res.data or []:
+                    if str(refund.get("status") or "").upper() != "REQUESTED":
+                        continue
+
+                    requested_at = refund.get("requested_at") or ""
+                    requested_at_formatted = "-"
+                    if requested_at:
+                        try:
+                            parsed_at = datetime.fromisoformat(requested_at.replace("Z", "+00:00"))
+                            requested_at_formatted = parsed_at.astimezone(kst).strftime("%Y-%m-%d %H:%M")
+                        except (TypeError, ValueError):
+                            requested_at_formatted = requested_at[:16]
+
+                    order = refund.get("orders") or {}
+                    refunds.append({
+                        "order_number": order.get("order_number") or "-",
+                        "reason": refund.get("reason") or "-",
+                        "requested_at": requested_at_formatted,
+                        "amount": float(order.get("total_amount") or order.get("payment_amount") or 0),
+                    })
+            except Exception as e:
+                app.logger.warning(f"[관리자 환불 목록 조회 오류] {e}")
+
+        return render_template("admin/refunds.html", refunds=refunds)
+
+    @app.route("/admin/refunds/<int:refund_id>/approve", methods=["POST"])
+    @login_required
+    @admin_required
+    def admin_approve_refund(refund_id):
+        from flask import jsonify
+        from app.utils import get_supabase_admin_client
+
+        admin_client = get_supabase_admin_client()
+        if not admin_client:
+            return jsonify({"success": False, "message": "데이터베이스 연결에 실패했습니다."}), 500
+
+        try:
+            result = admin_client.rpc(
+                "approve_refund",
+                {"target_refund_id": refund_id},
+            ).execute()
+            outcome = result.data
+            if isinstance(outcome, list):
+                outcome = outcome[0] if outcome else None
+
+            if outcome == "conflict":
+                return jsonify({"success": False, "message": "이미 처리된 환불 신청입니다."}), 409
+            if outcome == "not_found":
+                return jsonify({"success": False, "message": "환불 신청을 찾을 수 없습니다."}), 404
+            if outcome != "approved":
+                app.logger.error(f"[관리자 환불 승인 오류] 예상하지 못한 RPC 결과: {outcome}")
+                return jsonify({"success": False, "message": "환불 승인 처리 중 오류가 발생했습니다."}), 500
+
+            return jsonify({"success": True, "message": "환불이 승인되었습니다"})
+        except Exception as e:
+            app.logger.error(f"[관리자 환불 승인 오류] {e}", exc_info=True)
+            return jsonify({"success": False, "message": "환불 승인 처리 중 오류가 발생했습니다."}), 500
+
+    @app.route("/admin/orders/<order_id>")
+    @login_required
+    @admin_required
+    def admin_order_detail(order_id):
+        from datetime import datetime, timedelta, timezone
+        from flask import render_template
+        from app.utils import get_supabase_admin_client, get_supabase_client
+
+        admin_client = get_supabase_admin_client()
+        db_client = admin_client or get_supabase_client()
+        if not db_client:
+            abort(500)
+
+        try:
+            order_result = (
+                db_client.table("orders")
+                .select("*, profiles(email, created_at), order_items(*)")
+                .eq("id", order_id)
+                .limit(1)
+                .execute()
+            )
+        except Exception as e:
+            app.logger.error(f"[관리자 주문 상세 조회 오류] {e}", exc_info=True)
+            abort(500)
+
+        if not order_result.data:
+            abort(404)
+
+        order = order_result.data[0]
+        profile = order.get("profiles") or {}
+        shipping_address = order.get("shipping_address") or {}
+        items = order.get("order_items") or []
+        for item in items:
+            option_parts = (item.get("option_name") or "").split(" / ", 1)
+            item["color"] = option_parts[0] if option_parts else ""
+            item["size"] = option_parts[1] if len(option_parts) > 1 else ""
+
+        kst = timezone(timedelta(hours=9))
+        customer_created_at = profile.get("created_at") or ""
+        if customer_created_at:
+            try:
+                parsed_at = datetime.fromisoformat(customer_created_at.replace("Z", "+00:00"))
+                customer_created_at = parsed_at.astimezone(kst).strftime("%Y-%m-%d %H:%M")
+            except (TypeError, ValueError):
+                pass
+
+        return render_template(
+            "admin/order_detail.html",
+            order=order,
+            items=items,
+            profile=profile,
+            customer_created_at=customer_created_at or "-",
+            shipping_address=shipping_address,
+        )
+
+    @app.route("/admin/orders/<order_id>/status", methods=["POST"])
+    @login_required
+    @admin_required
+    def admin_order_status(order_id):
+        from datetime import datetime, timezone
+        from flask import jsonify
+        from app.utils import get_supabase_admin_client, get_supabase_client
+
+        requested_status = str((request.get_json(silent=True) or request.form).get("status", "")).strip().lower()
+        transitions = {
+            "paid": "preparing",
+            "preparing": "shipped",
+            "shipped": "delivered",
+        }
+        if requested_status not in transitions.values():
+            return jsonify({"success": False, "message": "잘못된 상태 변경입니다"}), 400
+
+        admin_client = get_supabase_admin_client()
+        db_client = admin_client or get_supabase_client()
+        if not db_client:
+            return jsonify({"success": False, "message": "데이터베이스 연결에 실패했습니다."}), 500
+
+        try:
+            current_result = (
+                db_client.table("orders")
+                .select("id, status")
+                .eq("id", order_id)
+                .limit(1)
+                .execute()
+            )
+            if not current_result.data:
+                return jsonify({"success": False, "message": "주문을 찾을 수 없습니다."}), 404
+
+            current_status = str(current_result.data[0].get("status") or "").lower()
+            if transitions.get(current_status) != requested_status:
+                return jsonify({"success": False, "message": "잘못된 상태 변경입니다"}), 400
+
+            changed_at = datetime.now(timezone.utc).isoformat()
+            update_result = (
+                db_client.table("orders")
+                .update({
+                    "status": requested_status.upper(),
+                    "status_changed_at": changed_at,
+                })
+                .eq("id", order_id)
+                .eq("status", current_status.upper())
+                .select("status")
+                .execute()
+            )
+            if not update_result.data:
+                return jsonify({"success": False, "message": "잘못된 상태 변경입니다"}), 400
+
+            return jsonify({
+                "success": True,
+                "status": requested_status,
+                "status_changed_at": changed_at,
+            })
+        except Exception as e:
+            app.logger.error(f"[관리자 주문 상태 변경 오류] {e}", exc_info=True)
+            return jsonify({"success": False, "message": "주문 상태 변경 중 오류가 발생했습니다."}), 500
 
     @app.route("/admin/products", defaults={"product_id": None}, methods=["GET", "POST"])
     @app.route("/admin/products/<product_id>", methods=["PATCH"])

@@ -107,8 +107,11 @@ CREATE TABLE IF NOT EXISTS public.orders (
     payment_method TEXT,
     payment_key TEXT, -- 결제 PG 연동 식별자
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    status_changed_at TIMESTAMPTZ
 );
+
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS status_changed_at TIMESTAMPTZ;
 
 -- --------------------------------------------------------
 -- 8. order_items (주문 상세 항목)
@@ -143,6 +146,45 @@ CREATE TABLE IF NOT EXISTS public.refunds (
     requested_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     processed_at TIMESTAMPTZ
 );
+
+CREATE OR REPLACE FUNCTION public.approve_refund(target_refund_id BIGINT)
+RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    linked_order_id UUID;
+BEGIN
+    UPDATE public.refunds
+    SET status = 'APPROVED',
+        processed_at = timezone('utc'::text, now())
+    WHERE id = target_refund_id
+      AND upper(status) = 'REQUESTED'
+    RETURNING order_id INTO linked_order_id;
+
+    IF NOT FOUND THEN
+        IF EXISTS (SELECT 1 FROM public.refunds WHERE id = target_refund_id) THEN
+            RETURN 'conflict';
+        END IF;
+        RETURN 'not_found';
+    END IF;
+
+    UPDATE public.orders
+    SET status = 'REFUNDED',
+        status_changed_at = timezone('utc'::text, now())
+    WHERE id = linked_order_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION '환불 연결 주문을 찾을 수 없습니다.';
+    END IF;
+
+    RETURN 'approved';
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.approve_refund(BIGINT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.approve_refund(BIGINT) TO service_role;
 
 -- --------------------------------------------------------
 -- 10. notifications (알림)

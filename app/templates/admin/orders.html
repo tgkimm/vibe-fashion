@@ -22,9 +22,8 @@
                     <a href="{{ url_for('admin_orders') }}" class="list-group-item list-group-item-action active fw-semibold d-flex align-items-center py-3 border-0 rounded-3 mx-2 mb-1">
                         <i class="bi bi-receipt me-3 fs-5"></i>주문관리
                     </a>
-                    <a href="#refunds" class="list-group-item list-group-item-action d-flex align-items-center py-3 border-0 rounded-3 mx-2 mb-1 text-muted">
-                        <i class="bi bi-arrow-counterclockwise me-3 fs-5"></i>환불관리
-                        <span class="badge bg-secondary ms-auto small">준비중</span>
+                    <a href="{{ url_for('admin_refunds') }}" class="list-group-item list-group-item-action d-flex align-items-center py-3 border-0 rounded-3 mx-2 mb-1 text-dark">
+                        <i class="bi bi-arrow-counterclockwise me-3 fs-5"></i>환불 관리
                     </a>
                 </div>
             </div>
@@ -72,6 +71,15 @@
             </form>
 
             <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+                {% set status_badges = {
+                    'paid': 'bg-primary',
+                    'preparing': 'bg-warning text-dark',
+                    'shipped': 'bg-info text-dark',
+                    'delivered': 'bg-success',
+                    'refunded': 'bg-secondary',
+                    'cancelled': 'bg-danger'
+                } %}
+                {% set next_statuses = {'paid': 'preparing', 'preparing': 'shipped', 'shipped': 'delivered'} %}
                 <div class="table-responsive">
                     <table class="table align-middle table-hover mb-0">
                         <thead class="table-light text-muted small">
@@ -80,18 +88,29 @@
                                 <th scope="col" style="min-width: 150px;">주문일시</th>
                                 <th scope="col" style="min-width: 200px;">고객 이메일</th>
                                 <th scope="col" class="text-end" style="min-width: 130px;">금액</th>
-                                <th scope="col" class="text-center pe-4" style="min-width: 120px;">상태</th>
+                                <th scope="col" class="text-center pe-4" style="min-width: 210px;">상태</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% if orders %}
                                 {% for order in orders %}
-                                <tr>
+                                <tr class="order-detail-row" style="cursor: pointer;" data-url="{{ url_for('admin_order_detail', order_id=order.id) }}" tabindex="0" role="link" aria-label="주문 {{ order.order_number }} 상세 보기">
                                     <td class="ps-4 fw-semibold">{{ order.order_number }}</td>
                                     <td>{{ order.created_at }}</td>
                                     <td>{{ order.customer_email }}</td>
                                     <td class="text-end">{{ "{:,}".format(order.amount|int) }}원</td>
-                                    <td class="text-center pe-4">{{ order.status }}</td>
+                                    {% set current_status = order.status|lower %}
+                                    {% set next_status = next_statuses.get(current_status) %}
+                                    <td class="text-center pe-4">
+                                        <div class="d-inline-flex align-items-center justify-content-center gap-2">
+                                            <span class="badge order-status-badge {{ status_badges.get(current_status, 'bg-secondary') }}" data-status="{{ current_status }}">{{ current_status }}</span>
+                                            {% if next_status %}
+                                            <button type="button" class="btn btn-sm btn-outline-primary next-order-status-btn"
+                                                    data-url="{{ url_for('admin_order_status', order_id=order.id) }}"
+                                                    data-next-status="{{ next_status }}">다음 단계로</button>
+                                            {% endif %}
+                                        </div>
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             {% else %}
@@ -106,4 +125,68 @@
         </main>
     </div>
 </div>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const nextStatuses = { paid: "preparing", preparing: "shipped", shipped: "delivered" };
+    const badgeClasses = {
+        paid: "bg-primary",
+        preparing: "bg-warning text-dark",
+        shipped: "bg-info text-dark",
+        delivered: "bg-success"
+    };
+
+    document.querySelector(".table-responsive").addEventListener("click", async function (event) {
+        const row = event.target.closest(".order-detail-row");
+        if (row && !event.target.closest("button, a, input, select, textarea")) {
+            window.location.href = row.dataset.url;
+            return;
+        }
+
+        const button = event.target.closest(".next-order-status-btn");
+        if (!button) return;
+
+        button.disabled = true;
+        try {
+            const response = await fetch(button.dataset.url, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                body: JSON.stringify({ status: button.dataset.nextStatus })
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                window.alert(result.message || "주문 상태 변경 중 오류가 발생했습니다.");
+                return;
+            }
+
+            const badge = button.closest("td").querySelector(".order-status-badge");
+            badge.textContent = result.status;
+            badge.dataset.status = result.status;
+            badge.className = `badge order-status-badge ${badgeClasses[result.status] || "bg-secondary"}`;
+
+            const nextStatus = nextStatuses[result.status];
+            if (nextStatus) {
+                button.dataset.nextStatus = nextStatus;
+            } else {
+                button.remove();
+            }
+        } catch (error) {
+            console.error("주문 상태 변경 통신 오류:", error);
+            window.alert("서버 통신 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+        } finally {
+            if (button.isConnected) button.disabled = false;
+        }
+    });
+
+    document.querySelector(".table-responsive").addEventListener("keydown", function (event) {
+        const row = event.target.closest(".order-detail-row");
+        if (row && (event.key === "Enter" || event.key === " ")) {
+            event.preventDefault();
+            window.location.href = row.dataset.url;
+        }
+    });
+});
+</script>
 {% endblock %}
