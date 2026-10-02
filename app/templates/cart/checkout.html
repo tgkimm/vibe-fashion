@@ -91,12 +91,16 @@
                     </div>
                     <div class="d-flex justify-content-between mb-3">
                         <span class="text-muted">배송비</span>
+                        {% if shipping_fee == 0 %}
                         <span class="text-success fw-semibold">무료 배송</span>
+                        {% else %}
+                        <span class="fw-semibold">{{ "{:,}".format(shipping_fee) }}원</span>
+                        {% endif %}
                     </div>
                     <hr>
                     <div class="d-flex justify-content-between align-items-center mb-4">
                         <span class="fs-5 fw-bold">최종 결제 금액</span>
-                        <span class="fs-4 fw-bold text-primary">{{ "{:,}".format(total_amount) }}원</span>
+                        <span class="fs-4 fw-bold text-primary">{{ "{:,}".format(final_total) }}원</span>
                     </div>
 
                     <div class="mb-3">
@@ -114,7 +118,7 @@
                     </div>
 
                     <button type="submit" class="btn btn-primary w-100 py-3 fw-bold rounded-3 shadow-sm">
-                        {{ "{:,}".format(total_amount) }}원 결제하기
+                        {{ "{:,}".format(final_total) }}원 결제하기
                     </button>
                 </div>
             </div>

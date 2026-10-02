@@ -19,6 +19,13 @@ def _auth_expired_response():
     return jsonify({"success": False, "message": "로그인이 만료되었습니다. 다시 로그인해 주세요."}), 401
 
 
+def _calc_totals(items):
+    """상품 금액, 배송비(5만원 이상 무료, 미만 3,000원), 최종 결제 금액을 반환."""
+    subtotal = sum(item["price"] * item["quantity"] for item in items)
+    shipping_fee = 0 if subtotal >= 50000 else 3000
+    return subtotal, shipping_fee, subtotal + shipping_fee
+
+
 def _get_stock(option):
     """stock / stock_quantity 두 컬럼이 혼재하므로 값이 채워진 쪽을 재고로 사용."""
     return max(int(option.get("stock") or 0), int(option.get("stock_quantity") or 0))
@@ -65,6 +72,8 @@ def view_cart():
                 "cart/cart.html",
                 items=[],
                 total_amount=0,
+                shipping_fee=0,
+                final_total=0,
                 total_count=0
             )
 
@@ -143,11 +152,14 @@ def view_cart():
                 logger.warning(f"[장바구니 항목 처리 오류] cart_item={cart_item}, error={e}", exc_info=True)
                 continue
 
-        logger.info(f"[장바구니 조회 완료] 최종 {len(items)}개 아이템, 총액={total_amount}")
+        total_amount, shipping_fee, final_total = _calc_totals(items)
+        logger.info(f"[장바구니 조회 완료] 최종 {len(items)}개 아이템, 상품금액={total_amount}, 배송비={shipping_fee}")
         return render_template(
             "cart/cart.html",
             items=items,
             total_amount=total_amount,
+            shipping_fee=shipping_fee,
+            final_total=final_total,
             total_count=total_count
         )
 
@@ -619,7 +631,7 @@ def checkout():
         return redirect(url_for("cart.view_cart"))
 
     items = list(cart.values())
-    total_amount = sum(item["price"] * item["quantity"] for item in items)
+    total_amount, shipping_fee, final_total = _calc_totals(items)
     total_count = sum(item["quantity"] for item in items)
 
     if request.method == "POST":
@@ -629,6 +641,8 @@ def checkout():
         return render_template(
             "cart/checkout_success.html",
             total_amount=total_amount,
+            shipping_fee=shipping_fee,
+            final_total=final_total,
             total_count=total_count
         )
 
@@ -636,6 +650,8 @@ def checkout():
         "cart/checkout.html",
         items=items,
         total_amount=total_amount,
+        shipping_fee=shipping_fee,
+        final_total=final_total,
         total_count=total_count,
         user=session.get("user")
     )

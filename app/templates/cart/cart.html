@@ -106,13 +106,13 @@
                     <div class="d-flex justify-content-between mb-3">
                         <span class="text-muted">배송비</span>
                         <span class="fw-semibold" id="summary-shipping">
-                            <span id="shipping-amount">0</span>원
+                            <span id="shipping-amount">{{ "{:,}".format(shipping_fee) }}</span>원
                         </span>
                     </div>
                     <hr>
                     <div class="d-flex justify-content-between align-items-center mb-4">
                         <span class="fs-5 fw-bold">총 결제 예정 금액</span>
-                        <span class="fs-4 fw-bold text-primary" id="summary-total-amount">{{ "{:,}".format(total_amount) }}원</span>
+                        <span class="fs-4 fw-bold text-primary" id="summary-total-amount">{{ "{:,}".format(final_total) }}원</span>
                     </div>
                     <div id="out-of-stock-alert" class="alert alert-warning d-none mb-3" role="alert">
                         <i class="bi bi-exclamation-triangle me-2"></i>
