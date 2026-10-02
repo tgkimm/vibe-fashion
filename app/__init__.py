@@ -302,6 +302,7 @@ def create_app():
 
                     order = refund.get("orders") or {}
                     refunds.append({
+                        "id": refund.get("id"),
                         "order_number": order.get("order_number") or "-",
                         "reason": refund.get("reason") or "-",
                         "requested_at": requested_at_formatted,
@@ -344,6 +345,43 @@ def create_app():
         except Exception as e:
             app.logger.error(f"[관리자 환불 승인 오류] {e}", exc_info=True)
             return jsonify({"success": False, "message": "환불 승인 처리 중 오류가 발생했습니다."}), 500
+
+    @app.route("/admin/refunds/<int:refund_id>/reject", methods=["POST"])
+    @login_required
+    @admin_required
+    def admin_reject_refund(refund_id):
+        from flask import jsonify
+        from app.utils import get_supabase_admin_client
+
+        rejection_memo = request.form.get("admin_memo", "").strip()
+        if not rejection_memo:
+            return jsonify({"success": False, "message": "거절 사유를 입력해 주세요."}), 400
+
+        admin_client = get_supabase_admin_client()
+        if not admin_client:
+            return jsonify({"success": False, "message": "데이터베이스 연결에 실패했습니다."}), 500
+
+        try:
+            result = admin_client.rpc(
+                "reject_refund",
+                {"target_refund_id": refund_id, "rejection_memo": rejection_memo},
+            ).execute()
+            outcome = result.data
+            if isinstance(outcome, list):
+                outcome = outcome[0] if outcome else None
+
+            if outcome == "conflict":
+                return jsonify({"success": False, "message": "이미 처리된 환불 신청입니다."}), 409
+            if outcome == "not_found":
+                return jsonify({"success": False, "message": "환불 신청을 찾을 수 없습니다."}), 404
+            if outcome != "rejected":
+                app.logger.error(f"[관리자 환불 거절 오류] 예상하지 못한 RPC 결과: {outcome}")
+                return jsonify({"success": False, "message": "환불 거절 처리 중 오류가 발생했습니다."}), 500
+
+            return jsonify({"success": True, "message": "환불이 거절되었습니다."})
+        except Exception as e:
+            app.logger.error(f"[관리자 환불 거절 오류] {e}", exc_info=True)
+            return jsonify({"success": False, "message": "환불 거절 처리 중 오류가 발생했습니다."}), 500
 
     @app.route("/admin/orders/<order_id>")
     @login_required

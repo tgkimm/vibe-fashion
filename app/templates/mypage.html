@@ -351,6 +351,9 @@
                                             <span class="badge bg-{{ ref.badge_color }} px-3 py-2 rounded-pill">
                                                 {{ ref.status_text }}
                                             </span>
+                                            {% if ref.status|upper == 'REJECTED' and ref.admin_memo %}
+                                            <div class="small text-danger mt-2 text-start">거절 사유: {{ ref.admin_memo }}</div>
+                                            {% endif %}
                                         </td>
                                     </tr>
                                     {% endfor %}

@@ -186,6 +186,35 @@ $$;
 REVOKE ALL ON FUNCTION public.approve_refund(BIGINT) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.approve_refund(BIGINT) TO service_role;
 
+CREATE OR REPLACE FUNCTION public.reject_refund(target_refund_id BIGINT, rejection_memo TEXT)
+RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+    UPDATE public.refunds
+    SET status = 'REJECTED',
+        admin_memo = btrim(rejection_memo),
+        processed_at = timezone('utc'::text, now())
+    WHERE id = target_refund_id
+      AND upper(status) = 'REQUESTED'
+      AND NULLIF(btrim(rejection_memo), '') IS NOT NULL;
+
+    IF FOUND THEN
+        RETURN 'rejected';
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM public.refunds WHERE id = target_refund_id) THEN
+        RETURN 'conflict';
+    END IF;
+    RETURN 'not_found';
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.reject_refund(BIGINT, TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.reject_refund(BIGINT, TEXT) TO service_role;
+
 -- --------------------------------------------------------
 -- 10. notifications (알림)
 -- --------------------------------------------------------

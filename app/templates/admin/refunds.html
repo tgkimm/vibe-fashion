@@ -49,21 +49,31 @@
                                 <th scope="col" style="min-width: 240px;">신청 사유</th>
                                 <th scope="col" style="min-width: 160px;">신청일시</th>
                                 <th scope="col" class="text-end pe-4" style="min-width: 130px;">주문 금액</th>
+                                <th scope="col" class="text-center pe-4" style="min-width: 100px;">처리</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% if refunds %}
                                 {% for refund in refunds %}
-                                <tr>
+                                <tr data-refund-row="{{ refund.id }}">
                                     <td class="ps-4 fw-semibold font-monospace">{{ refund.order_number }}</td>
                                     <td class="text-break">{{ refund.reason }}</td>
                                     <td class="text-muted">{{ refund.requested_at }}</td>
                                     <td class="text-end pe-4 fw-semibold">{{ "{:,}".format(refund.amount|int) }}원</td>
+                                    <td class="text-center pe-4">
+                                        <button type="button" class="btn btn-sm btn-outline-danger reject-refund-btn"
+                                                data-refund-id="{{ refund.id }}"
+                                                data-order-number="{{ refund.order_number }}"
+                                                data-bs-toggle="modal" data-bs-target="#rejectRefundModal"
+                                                aria-label="주문 {{ refund.order_number }} 환불 거절">
+                                            거절
+                                        </button>
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             {% else %}
                                 <tr>
-                                    <td colspan="4" class="text-center py-5 text-muted">
+                                    <td colspan="5" class="text-center py-5 text-muted">
                                         <i class="bi bi-arrow-counterclockwise fs-2 d-block mb-2"></i>
                                         접수된 환불 신청이 없습니다.
                                     </td>
@@ -76,4 +86,80 @@
         </main>
     </div>
 </div>
+
+<div class="modal fade" id="rejectRefundModal" tabindex="-1" aria-labelledby="rejectRefundModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow rounded-4">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold" id="rejectRefundModalLabel">환불 신청 거절</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+            </div>
+            <form id="rejectRefundForm" method="post">
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">주문번호 <span id="rejectRefundOrderNumber" class="fw-semibold text-dark"></span></p>
+                    <label for="refundRejectionMemo" class="form-label fw-semibold">거절 사유 <span class="text-danger">*</span></label>
+                    <textarea class="form-control" id="refundRejectionMemo" name="admin_memo" rows="4" required></textarea>
+                    <div id="rejectRefundError" class="text-danger small mt-2 d-none" role="alert"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="submit" class="btn btn-danger">거절 처리</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const form = document.getElementById("rejectRefundForm");
+    const memoInput = document.getElementById("refundRejectionMemo");
+    const errorMessage = document.getElementById("rejectRefundError");
+    const submitButton = form.querySelector("[type='submit']");
+
+    document.querySelectorAll(".reject-refund-btn").forEach(function (button) {
+        button.addEventListener("click", function () {
+            form.action = `/admin/refunds/${button.dataset.refundId}/reject`;
+            document.getElementById("rejectRefundOrderNumber").textContent = button.dataset.orderNumber;
+            memoInput.value = "";
+            errorMessage.textContent = "";
+            errorMessage.classList.add("d-none");
+        });
+    });
+
+    form.addEventListener("submit", async function (event) {
+        event.preventDefault();
+        if (!memoInput.value.trim()) {
+            memoInput.setCustomValidity("거절 사유를 입력해 주세요.");
+            form.reportValidity();
+            memoInput.setCustomValidity("");
+            return;
+        }
+
+        submitButton.disabled = true;
+        errorMessage.classList.add("d-none");
+        try {
+            const response = await fetch(form.action, {
+                method: "POST",
+                body: new FormData(form),
+                headers: { "X-Requested-With": "XMLHttpRequest" }
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                errorMessage.textContent = result.message || "환불 거절 처리 중 오류가 발생했습니다.";
+                errorMessage.classList.remove("d-none");
+                return;
+            }
+
+            window.alert(result.message);
+            window.location.reload();
+        } catch (error) {
+            errorMessage.textContent = "서버 통신 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.";
+            errorMessage.classList.remove("d-none");
+        } finally {
+            submitButton.disabled = false;
+        }
+    });
+});
+</script>
 {% endblock %}

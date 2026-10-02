@@ -1106,7 +1106,7 @@ def mypage():
                         status_text = "승인됨"
                     elif status_raw == "REJECTED":
                         badge_color = "secondary"
-                        status_text = "반려됨"
+                        status_text = "거절됨"
                     else:
                         badge_color = "secondary"
                         status_text = status_raw
