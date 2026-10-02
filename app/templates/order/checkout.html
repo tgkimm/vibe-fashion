@@ -90,14 +90,21 @@
                         <option value="화장실에 설치">화장실에 설치</option>
                         <option value="직접 입력">직접 입력</option>
                     </select>
+                    <div id="customMemoWrapper" class="mt-2 d-none">
+                        <input type="text" class="form-control rounded-3" id="custom_shipping_memo" name="custom_shipping_memo" placeholder="배송 요청사항을 직접 입력해 주세요." maxlength="50">
+                    </div>
                     <small class="text-muted">배송사에 특별 요청사항이 있으면 선택해 주세요.</small>
                 </div>
 
                 <!-- 기본 배송지 불러오기 버튼 -->
                 <div class="mb-4">
-                    <button type="button" class="btn btn-outline-secondary rounded-3 py-2 px-4" id="loadDefaultAddressBtn">
+                    <button type="button" class="btn btn-outline-secondary rounded-3 py-2 px-4" id="loadDefaultAddressBtn"
+                        data-default-name="{{ default_name|e }}"
+                        data-default-phone="{{ default_phone|e }}"
+                        data-default-address="{{ default_address|e }}">
                         <i class="bi bi-arrow-clockwise me-2"></i>마이페이지의 기본 배송지 불러오기
                     </button>
+                    <div id="defaultAddressNotice" class="small text-muted mt-1 d-none"></div>
                 </div>
 
                 <!-- 주문 요약 카드 (모바일에서는 아래) -->
@@ -177,10 +184,27 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
+    const recipientNameInput = document.getElementById("recipient_name");
     const phoneInput = document.getElementById("phone_number");
+    const shippingAddressInput = document.getElementById("shipping_address");
+    const shippingMemoSelect = document.getElementById("shipping_memo");
+    const customMemoWrapper = document.getElementById("customMemoWrapper");
+    const customMemoInput = document.getElementById("custom_shipping_memo");
     const checkoutForm = document.getElementById("checkoutForm");
     const paymentBtn = document.getElementById("paymentBtn");
     const loadDefaultAddressBtn = document.getElementById("loadDefaultAddressBtn");
+    const defaultAddressNotice = document.getElementById("defaultAddressNotice");
+
+    // 배송 요청사항 "직접 입력" 선택 시 텍스트 입력 필드 토글
+    shippingMemoSelect.addEventListener("change", (e) => {
+        if (e.target.value === "직접 입력") {
+            customMemoWrapper.classList.remove("d-none");
+            customMemoInput.focus();
+        } else {
+            customMemoWrapper.classList.add("d-none");
+            customMemoInput.value = "";
+        }
+    });
 
     // 휴대폰 번호 입력 시 자동 포맷팅 (010-0000-0000)
     phoneInput.addEventListener("input", (e) => {
@@ -197,12 +221,44 @@ document.addEventListener("DOMContentLoaded", () => {
     // 기본 배송지 불러오기
     loadDefaultAddressBtn.addEventListener("click", (e) => {
         e.preventDefault();
-        // 이미 default 값이 채워져 있으므로 리로드하면 됨
-        location.reload();
+        const defaultName = (loadDefaultAddressBtn.dataset.defaultName || "").trim();
+        const defaultPhone = (loadDefaultAddressBtn.dataset.defaultPhone || "").trim();
+        const defaultAddress = (loadDefaultAddressBtn.dataset.defaultAddress || "").trim();
+
+        let applied = false;
+        if (defaultAddress) {
+            shippingAddressInput.value = defaultAddress;
+            applied = true;
+        }
+        if (defaultPhone && !phoneInput.value) {
+            phoneInput.value = defaultPhone;
+        }
+        if (defaultName && !recipientNameInput.value) {
+            recipientNameInput.value = defaultName;
+        }
+
+        defaultAddressNotice.classList.remove("d-none");
+        if (applied) {
+            defaultAddressNotice.className = "small text-success mt-1";
+            defaultAddressNotice.textContent = "✓ 마이페이지 기본 배송지를 불러왔습니다.";
+            shippingAddressInput.classList.add("border-success");
+            setTimeout(() => {
+                shippingAddressInput.classList.remove("border-success");
+            }, 1500);
+        } else {
+            defaultAddressNotice.className = "small text-danger mt-1";
+            defaultAddressNotice.textContent = "마이페이지에 등록된 기본 배송지가 없습니다. 마이페이지에서 먼저 배송지를 등록해 주세요.";
+        }
     });
 
     // 결제하기 버튼 - 중복 클릭 방지
     checkoutForm.addEventListener("submit", (e) => {
+        if (shippingMemoSelect.value === "직접 입력" && !customMemoInput.value.trim()) {
+            e.preventDefault();
+            customMemoInput.focus();
+            alert("배송 요청사항을 직접 입력해 주세요.");
+            return;
+        }
         paymentBtn.disabled = true;
         paymentBtn.textContent = "처리 중...";
     });

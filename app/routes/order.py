@@ -179,27 +179,47 @@ def checkout():
 
         # GET 요청 - 주문서 폼 표시
         if request.method == "GET":
-            # 프로필에서 기본 배송지 조회
-            default_address = ""
+            # 프로필 및 auth 메타데이터에서 기본 배송지/연락처/이름 조회
+            default_address = user.get("address") or ""
             default_name = user.get("real_name") or user.get("name") or ""
-            default_phone = ""
+            default_phone = user.get("phone") or ""
 
+            # 1) profiles 테이블 조회 (phone, name 등)
             try:
                 profile_res = (
                     supabase.table("profiles")
-                    .select("name, phone, address")
+                    .select("*")
                     .eq("id", user_id)
                     .single()
                     .execute()
                 )
                 if profile_res.data:
-                    default_name = profile_res.data.get("name") or default_name
-                    default_phone = profile_res.data.get("phone") or ""
-                    default_address = profile_res.data.get("address") or ""
+                    p_data = profile_res.data
+                    default_name = p_data.get("name") or default_name
+                    default_phone = p_data.get("phone") or default_phone
+                    if p_data.get("address"):
+                        default_address = p_data.get("address")
             except Exception as e:
-                logger.warning(f"[주문서 프로필 조회 경고] {e}")
+                logger.warning(f"[주문서 profiles 조회 경고] {e}")
 
-            logger.info(f"[주문서 조회 완료] {len(items)}개 아이템, 총액={total_amount}")
+            # 2) auth.users 메타데이터 조회 (마이페이지 기본 배송지가 메타데이터에 저장된 경우 대비)
+            if not default_address or not default_phone:
+                try:
+                    admin_client = get_supabase_admin_client()
+                    if admin_client:
+                        u_res = admin_client.auth.admin.get_user_by_id(user_id)
+                        if u_res and getattr(u_res, "user", None):
+                            meta = getattr(u_res.user, "user_metadata", {}) or {}
+                            if not default_address and meta.get("address"):
+                                default_address = meta.get("address")
+                            if not default_phone and meta.get("phone"):
+                                default_phone = meta.get("phone")
+                            if not default_name:
+                                default_name = meta.get("real_name") or meta.get("full_name") or meta.get("name") or default_name
+                except Exception as e:
+                    logger.warning(f"[주문서 auth.users 메타데이터 조회 경고] {e}")
+
+            logger.info(f"[주문서 조회 완료] {len(items)}개 아이템, 총액={total_amount}, 기본배송지={'있음' if default_address else '없음'}")
             return render_template(
                 "order/checkout.html",
                 items=items,
@@ -332,6 +352,11 @@ def create_order():
         phone_number = request.form.get("phone_number", "").strip()
         shipping_address = request.form.get("shipping_address", "").strip()
         shipping_memo = request.form.get("shipping_memo", "").strip()
+        custom_shipping_memo = request.form.get("custom_shipping_memo", "").strip()
+
+        # 직접 입력 선택 시 custom_shipping_memo 값 사용
+        if shipping_memo == "직접 입력":
+            shipping_memo = custom_shipping_memo
 
         if not recipient_name:
             flash("수령인 이름을 입력해 주세요.", "warning")
