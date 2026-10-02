@@ -24,10 +24,12 @@ def create_app():
     from app.routes.main import main_bp
     from app.routes.auth import auth_bp
     from app.routes.cart import cart_bp
+    from app.routes.order import order_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(cart_bp)
+    app.register_blueprint(order_bp)
 
     # 4. 템플릿 전역 변수 및 컨텍스트 프로세서 등록
     @app.context_processor

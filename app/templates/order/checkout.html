@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+
+{% block title %}주문서 - Vibe Fashion{% endblock %}
+
+{% block content %}
+<div class="container-lg py-4 py-md-5">
+    <div class="row">
+        <!-- 주문 상품 목록 -->
+        <div class="col-lg-8">
+            <h3 class="fw-bold mb-4">주문 상품 목록</h3>
+
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-4" style="width: 15%;">상품</th>
+                                <th style="width: 20%;">상품명</th>
+                                <th style="width: 15%;">옵션</th>
+                                <th class="text-end" style="width: 12%;">단가</th>
+                                <th class="text-center" style="width: 10%;">수량</th>
+                                <th class="text-end pe-4" style="width: 18%;">소계</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in items %}
+                            <tr>
+                                <td class="ps-4">
+                                    <img src="{{ item.thumbnail_url }}" alt="{{ item.name }}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 6px;">
+                                </td>
+                                <td>
+                                    <p class="mb-0 small fw-semibold text-truncate">{{ item.name }}</p>
+                                </td>
+                                <td>
+                                    <small class="text-muted">
+                                        {% if item.color or item.size %}
+                                            {{ item.color or '' }} {{ item.size or '' }}
+                                        {% else %}
+                                            기본
+                                        {% endif %}
+                                    </small>
+                                </td>
+                                <td class="text-end">
+                                    <small class="fw-semibold">{{ "{:,}".format(item.price) }}원</small>
+                                </td>
+                                <td class="text-center">
+                                    <small class="fw-semibold">{{ item.quantity }}개</small>
+                                </td>
+                                <td class="text-end pe-4">
+                                    <small class="fw-bold">{{ "{:,}".format(item.price * item.quantity) }}원</small>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 배송지 입력 폼 -->
+            <h3 class="fw-bold mb-4">배송지 정보</h3>
+
+            <form method="POST" id="checkoutForm" class="card border-0 shadow-sm rounded-4 p-4">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="recipient_name" class="form-label fw-semibold">수령인 이름</label>
+                        <input type="text" class="form-control form-control-lg rounded-3" id="recipient_name" name="recipient_name" value="{{ default_name }}" placeholder="홍길동" required>
+                        <small class="text-muted">실명을 입력해 주세요.</small>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label for="phone_number" class="form-label fw-semibold">휴대폰 번호</label>
+                        <input type="tel" class="form-control form-control-lg rounded-3" id="phone_number" name="phone_number" value="{{ default_phone }}" placeholder="010-0000-0000" pattern="01[0-9]-\d{3,4}-\d{4}" required>
+                        <small class="text-muted">형식: 010-0000-0000</small>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="shipping_address" class="form-label fw-semibold">배송 주소</label>
+                    <textarea class="form-control form-control-lg rounded-3" id="shipping_address" name="shipping_address" rows="2" placeholder="도로명 또는 지번 주소를 입력해 주세요." minlength="5" required>{{ default_address }}</textarea>
+                    <small class="text-muted">최소 5자 이상 입력해 주세요.</small>
+                </div>
+
+                <div class="mb-4">
+                    <label for="shipping_memo" class="form-label fw-semibold">배송 요청사항 (선택)</label>
+                    <select class="form-select form-select-lg rounded-3" id="shipping_memo" name="shipping_memo">
+                        <option value="">특별히 없습니다</option>
+                        <option value="부재중 안내 후 반송">부재중 안내 후 반송</option>
+                        <option value="경비실에 맡겨주세요">경비실에 맡겨주세요</option>
+                        <option value="주방 문제로 냉장 배송 요청">주방 문제로 냉장 배송 요청</option>
+                        <option value="화장실에 설치">화장실에 설치</option>
+                        <option value="직접 입력">직접 입력</option>
+                    </select>
+                    <small class="text-muted">배송사에 특별 요청사항이 있으면 선택해 주세요.</small>
+                </div>
+
+                <!-- 기본 배송지 불러오기 버튼 -->
+                <div class="mb-4">
+                    <button type="button" class="btn btn-outline-secondary rounded-3 py-2 px-4" id="loadDefaultAddressBtn">
+                        <i class="bi bi-arrow-clockwise me-2"></i>마이페이지의 기본 배송지 불러오기
+                    </button>
+                </div>
+
+                <!-- 주문 요약 카드 (모바일에서는 아래) -->
+                <div class="d-lg-none">
+                    <div class="card border-0 bg-light rounded-4 p-4 mb-4">
+                        <h5 class="fw-bold mb-3">결제 요약</h5>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted">총 품목 수</span>
+                            <span class="fw-semibold">{{ total_count }}개</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted">상품 금액</span>
+                            <span class="fw-semibold">{{ "{:,}".format(total_amount) }}원</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-3">
+                            <span class="text-muted">배송비</span>
+                            <span class="fw-semibold">
+                                {% if shipping_fee == 0 %}
+                                <span class="text-success">무료 배송</span>
+                                {% else %}
+                                {{ "{:,}".format(shipping_fee) }}원
+                                {% endif %}
+                            </span>
+                        </div>
+                        <hr>
+                        <div class="d-flex justify-content-between">
+                            <span class="fs-5 fw-bold">총 결제 예정 금액</span>
+                            <span class="fs-5 fw-bold text-primary">{{ "{:,}".format(final_total) }}원</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 결제 버튼 -->
+                <button type="submit" class="btn btn-primary w-100 py-3 fw-bold rounded-3 shadow-sm" id="paymentBtn">
+                    <i class="bi bi-credit-card me-2"></i>{{ "{:,}".format(final_total) }}원 결제하기
+                </button>
+            </form>
+        </div>
+
+        <!-- 결제 요약 카드 (데스크톱) -->
+        <div class="col-lg-4 d-none d-lg-block">
+            <div class="card border-0 shadow-sm rounded-4 p-4 sticky-top" style="top: 100px;">
+                <h5 class="fw-bold mb-4">결제 요약</h5>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">총 품목 수</span>
+                    <span class="fw-semibold">{{ total_count }}개</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">상품 금액</span>
+                    <span class="fw-semibold">{{ "{:,}".format(total_amount) }}원</span>
+                </div>
+                <div class="d-flex justify-content-between mb-3">
+                    <span class="text-muted">배송비</span>
+                    <span class="fw-semibold">
+                        {% if shipping_fee == 0 %}
+                        <span class="text-success">무료 배송</span>
+                        {% else %}
+                        {{ "{:,}".format(shipping_fee) }}원
+                        {% endif %}
+                    </span>
+                </div>
+                <hr>
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <span class="fs-5 fw-bold">총 결제 예정 금액</span>
+                    <span class="fs-5 fw-bold text-primary">{{ "{:,}".format(final_total) }}원</span>
+                </div>
+
+                <div class="alert alert-info small" role="alert">
+                    <i class="bi bi-info-circle me-2"></i>
+                    <strong>결제 안내</strong><br>
+                    주문 완료 후 배송을 시작합니다. 배송비는 5만원 이상 구매 시 무료입니다.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const phoneInput = document.getElementById("phone_number");
+    const checkoutForm = document.getElementById("checkoutForm");
+    const paymentBtn = document.getElementById("paymentBtn");
+    const loadDefaultAddressBtn = document.getElementById("loadDefaultAddressBtn");
+
+    // 휴대폰 번호 입력 시 자동 포맷팅 (010-0000-0000)
+    phoneInput.addEventListener("input", (e) => {
+        let value = e.target.value.replace(/[^0-9]/g, "");
+        if (value.length <= 3) {
+            e.target.value = value;
+        } else if (value.length <= 7) {
+            e.target.value = value.slice(0, 3) + "-" + value.slice(3);
+        } else {
+            e.target.value = value.slice(0, 3) + "-" + value.slice(3, 7) + "-" + value.slice(7, 11);
+        }
+    });
+
+    // 기본 배송지 불러오기
+    loadDefaultAddressBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        // 이미 default 값이 채워져 있으므로 리로드하면 됨
+        location.reload();
+    });
+
+    // 결제하기 버튼 - 중복 클릭 방지
+    checkoutForm.addEventListener("submit", (e) => {
+        paymentBtn.disabled = true;
+        paymentBtn.textContent = "처리 중...";
+    });
+});
+</script>
+{% endblock %}

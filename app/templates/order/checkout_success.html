@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}주문 완료 - Vibe Fashion{% endblock %}
+
+{% block content %}
+<div class="container-lg py-5">
+    <div class="row">
+        <div class="col-lg-8 mx-auto text-center">
+            <div class="rounded-circle bg-success bg-opacity-10 d-inline-flex align-items-center justify-center p-5 mb-4 text-success" style="width: 120px; height: 120px;">
+                <i class="bi bi-check-lg" style="font-size: 3rem;"></i>
+            </div>
+
+            <h2 class="fw-bold mb-2">주문이 완료되었습니다!</h2>
+            <p class="text-muted mb-4">고객님의 주문이 정상적으로 접수되었습니다. 정성을 다해 준비하여 빠르게 배송해 드리겠습니다.</p>
+
+            <!-- 주문 정보 요약 -->
+            <div class="card border-0 bg-light rounded-4 p-4 mb-4">
+                <div class="text-start">
+                    <div class="row mb-3">
+                        <div class="col-6 text-start">
+                            <small class="text-muted">주문번호</small>
+                            <p class="fw-bold mb-0">{{ order_number }}</p>
+                        </div>
+                        <div class="col-6 text-end">
+                            <small class="text-muted">주문일시</small>
+                            <p class="fw-bold mb-0">{{ now.strftime('%Y.%m.%d %H:%M') if now else '' }}</p>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="row">
+                        <div class="col-6 text-start">
+                            <small class="text-muted">주문 품목</small>
+                            <p class="fw-semibold mb-0">{{ total_count }}개</p>
+                        </div>
+                        <div class="col-6 text-end">
+                            <small class="text-muted">상품 금액</small>
+                            <p class="fw-semibold mb-0">{{ "{:,}".format(total_amount) }}원</p>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-6 text-start">
+                            <small class="text-muted">배송비</small>
+                            <p class="fw-semibold mb-0">
+                                {% if shipping_fee == 0 %}
+                                <span class="text-success">무료 배송</span>
+                                {% else %}
+                                {{ "{:,}".format(shipping_fee) }}원
+                                {% endif %}
+                            </p>
+                        </div>
+                        <div class="col-6 text-end">
+                            <small class="text-muted">총 결제 금액</small>
+                            <p class="fw-bold text-primary mb-0">{{ "{:,}".format(final_total) }}원</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 배송 상태 안내 -->
+            <div class="alert alert-info mb-4" role="alert">
+                <i class="bi bi-info-circle me-2"></i>
+                <strong>배송 안내</strong><br>
+                <small>주문이 접수되었으며, 곧 배송을 시작합니다. 배송 상태는 <a href="{{ url_for('auth.mypage') }}" class="alert-link">마이페이지</a>에서 확인할 수 있습니다.</small>
+            </div>
+
+            <!-- 주문 상품 목록 -->
+            {% if items %}
+            <div class="card border-0 shadow-sm rounded-4 p-4 mb-4">
+                <h5 class="fw-bold mb-3 text-start">주문 상품</h5>
+                <div class="text-start">
+                    {% for item in items %}
+                    <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                        <div>
+                            <p class="fw-semibold mb-0">{{ item.product_name }}</p>
+                            <small class="text-muted">
+                                {% if item.option_name %}
+                                {{ item.option_name }}
+                                {% else %}
+                                기본 옵션
+                                {% endif %}
+                            </small>
+                        </div>
+                        <div class="text-end">
+                            <small class="text-muted">{{ item.quantity }}개</small><br>
+                            <small class="fw-semibold">{{ "{:,}".format(item.total_price) }}원</small>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- 버튼 그룹 -->
+            <div class="d-flex gap-2 justify-content-center">
+                <a href="{{ url_for('auth.mypage') }}" class="btn btn-primary px-5 py-2 fw-semibold rounded-3">
+                    <i class="bi bi-person-check me-2"></i>마이페이지에서 주문 확인
+                </a>
+                <a href="{{ url_for('main.index') }}" class="btn btn-outline-primary px-5 py-2 fw-semibold rounded-3">
+                    <i class="bi bi-bag me-2"></i>쇼핑 계속하기
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    // 페이지 로드 시 세션 장바구니 배지 업데이트
+    const cartBadge = document.getElementById("nav-cart-badge");
+    if (cartBadge) {
+        cartBadge.textContent = "0";
+    }
+});
+</script>
+{% endblock %}
