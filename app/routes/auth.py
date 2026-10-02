@@ -526,7 +526,9 @@ def signup():
 
         # 5. 닉네임 중복 검증
         try:
-            existing = supabase.table("profiles").select("id").eq("name", nickname).execute()
+            admin_client = get_supabase_admin_client()
+            db_client = admin_client or supabase
+            existing = db_client.table("profiles").select("id").eq("name", nickname).execute()
             if existing.data and len(existing.data) > 0:
                 return redirect(url_for("auth.signup", error="nickname_exists", email=email, real_name=real_name, nickname=nickname))
         except Exception as e:
@@ -940,7 +942,8 @@ def check_nickname():
     if not nickname or len(nickname) < 2:
         return jsonify({"available": False, "message": "닉네임은 2자 이상 입력해 주세요."})
 
-    supabase = get_supabase_client()
+    admin_client = get_supabase_admin_client()
+    supabase = admin_client or get_supabase_client()
     if not supabase:
         return jsonify({"available": False, "message": "인증 서버 연결 실패"}), 500
 
@@ -1178,7 +1181,8 @@ def update_profile():
 
         # 중복 닉네임 체크 (다른 회원과 중복 여부)
         try:
-            check_res = supabase.table("profiles").select("id").eq("name", new_nickname).execute()
+            check_client = admin_client or supabase
+            check_res = check_client.table("profiles").select("id").eq("name", new_nickname).execute()
             if check_res.data:
                 # 본인의 기존 닉네임이 아닌 다른 회원이 이미 쓰고 있는 경우
                 other_users = [u for u in check_res.data if u.get("id") != user_id]
@@ -1363,7 +1367,8 @@ def update_profile():
 
         # 닉네임 중복 체크
         try:
-            check_res = supabase.table("profiles").select("id").eq("name", new_nickname).execute()
+            check_client = admin_client or supabase
+            check_res = check_client.table("profiles").select("id").eq("name", new_nickname).execute()
             if check_res.data:
                 other_users = [u for u in check_res.data if u.get("id") != user_id]
                 if other_users:
