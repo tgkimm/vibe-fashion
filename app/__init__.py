@@ -203,6 +203,86 @@ def create_app():
             recent_orders=recent_orders,
         )
 
+    @app.route("/admin/products")
+    @login_required
+    @admin_required
+    def admin_products():
+        """
+        관리자 상품 관리 페이지: GET /admin/products
+        - DB의 전체 상품을 조회하여 목록 테이블로 표시
+        - 이름, 카테고리, 가격, 정가, 재고, 활성상태 컬럼 표시
+        """
+        from flask import render_template
+        from app.utils import get_supabase_admin_client, get_supabase_client
+
+        admin_client = get_supabase_admin_client()
+        db_client = admin_client or get_supabase_client()
+
+        products = []
+        if db_client:
+            try:
+                # RLS를 우회/관리자 권한으로 비활성 상품 포함 전체 상품 조회
+                res = (
+                    db_client.table("products")
+                    .select(
+                        "id, name, description, price, sale_price, is_active, created_at, "
+                        "categories(id, name), "
+                        "product_options(id, stock, stock_quantity), "
+                        "product_images(image_url, is_primary, sort_order)"
+                    )
+                    .order("created_at", desc=True)
+                    .execute()
+                )
+                raw_products = res.data or []
+
+                for item in raw_products:
+                    # 1. 카테고리명
+                    category = item.get("categories") or {}
+                    category_name = category.get("name") or "미지정"
+
+                    # 2. 가격 및 정가 (sale_price가 있으면 판매가격이 sale_price, 정가가 price)
+                    raw_price = float(item.get("price") or 0)
+                    raw_sale_price = float(item["sale_price"]) if item.get("sale_price") is not None else None
+                    if raw_sale_price is not None:
+                        effective_price = raw_sale_price
+                        original_price = raw_price
+                    else:
+                        effective_price = raw_price
+                        original_price = raw_price
+
+                    # 3. 옵션 총 재고 계산 (stock / stock_quantity 호환 처리)
+                    options = item.get("product_options") or []
+                    total_stock = sum(
+                        max(int(opt.get("stock") or 0), int(opt.get("stock_quantity") or 0))
+                        for opt in options
+                    )
+
+                    # 4. 대표 이미지
+                    images = item.get("product_images") or []
+                    images.sort(key=lambda x: (not x.get("is_primary", False), x.get("sort_order", 0)))
+                    primary_img = next((img for img in images if img.get("is_primary")), None)
+                    thumbnail_url = (
+                        primary_img.get("image_url")
+                        if primary_img
+                        else (images[0].get("image_url") if images else "")
+                    )
+
+                    products.append({
+                        "id": item.get("id"),
+                        "name": item.get("name") or "",
+                        "description": item.get("description") or "",
+                        "category_name": category_name,
+                        "price": effective_price,
+                        "original_price": original_price,
+                        "total_stock": total_stock,
+                        "is_active": bool(item.get("is_active", False)),
+                        "thumbnail_url": thumbnail_url,
+                    })
+            except Exception as e:
+                app.logger.error(f"[관리자 상품 목록 조회 오류] {e}", exc_info=True)
+
+        return render_template("admin/products.html", products=products)
+
     # 5. 템플릿 전역 변수 및 컨텍스트 프로세서 등록
     @app.context_processor
     def inject_cart_count():

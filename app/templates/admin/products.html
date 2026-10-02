@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}상품 관리 | VIBE-FASHION 관리자{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4 px-md-4">
+    <div class="row">
+        <!-- 왼쪽 사이드바 메뉴 -->
+        <aside class="col-12 col-md-3 col-xl-2 mb-4">
+            <div class="card border-0 shadow-sm rounded-4 overflow-hidden sticky-top" style="top: 80px; z-index: 10;">
+                <div class="card-header bg-dark text-white py-3">
+                    <h6 class="mb-0 fw-bold d-flex align-items-center">
+                        <i class="bi bi-shield-lock-fill text-warning me-2 fs-5"></i>관리자 메뉴
+                    </h6>
+                </div>
+                <div class="list-group list-group-flush py-2">
+                    <a href="{{ url_for('admin_dashboard') }}" class="list-group-item list-group-item-action d-flex align-items-center py-3 border-0 rounded-3 mx-2 mb-1 text-dark">
+                        <i class="bi bi-speedometer2 me-3 fs-5"></i>대시보드
+                    </a>
+                    <a href="{{ url_for('admin_products') }}" class="list-group-item list-group-item-action d-flex align-items-center active fw-semibold py-3 border-0 rounded-3 mx-2 mb-1">
+                        <i class="bi bi-box-seam me-3 fs-5"></i>상품관리
+                    </a>
+                    <a href="#orders" class="list-group-item list-group-item-action d-flex align-items-center py-3 border-0 rounded-3 mx-2 mb-1 text-muted">
+                        <i class="bi bi-receipt me-3 fs-5"></i>주문관리
+                        <span class="badge bg-secondary ms-auto small">준비중</span>
+                    </a>
+                    <a href="#refunds" class="list-group-item list-group-item-action d-flex align-items-center py-3 border-0 rounded-3 mx-2 mb-1 text-muted">
+                        <i class="bi bi-arrow-counterclockwise me-3 fs-5"></i>환불관리
+                        <span class="badge bg-secondary ms-auto small">준비중</span>
+                    </a>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 메인 콘텐츠 영역 -->
+        <main class="col-12 col-md-9 col-xl-10">
+            <!-- 상단 헤더 -->
+            <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+                <div>
+                    <h3 class="fw-bold mb-1">상품 관리</h3>
+                    <p class="text-muted small mb-0">등록된 전체 상품 목록을 조회하고 재고 및 판매 상태를 확인하세요.</p>
+                </div>
+                <div>
+                    <span class="badge bg-light text-dark border px-3 py-2 rounded-pill">
+                        총 <strong class="text-primary">{{ products|length }}</strong>개 상품
+                    </span>
+                </div>
+            </div>
+
+            <!-- 상품 목록 테이블 카드 -->
+            <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+                <div class="card-header bg-white py-3 px-4 border-0 d-flex justify-content-between align-items-center">
+                    <h5 class="fw-bold mb-0">전체 상품 목록</h5>
+                    <span class="text-muted small">최신 등록순 정렬</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table align-middle table-hover mb-0">
+                        <thead class="table-light text-muted small">
+                            <tr>
+                                <th scope="col" class="ps-4" style="min-width: 250px;">이름</th>
+                                <th scope="col" style="min-width: 120px;">카테고리</th>
+                                <th scope="col" class="text-end" style="min-width: 110px;">가격</th>
+                                <th scope="col" class="text-end" style="min-width: 110px;">정가</th>
+                                <th scope="col" class="text-end" style="min-width: 100px;">재고</th>
+                                <th scope="col" class="text-center pe-4" style="min-width: 100px;">활성상태</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if products %}
+                                {% for product in products %}
+                                <tr>
+                                    <!-- 1. 이름 (대표 이미지 + 상품명 + 설명) -->
+                                    <td class="ps-4">
+                                        <div class="d-flex align-items-center">
+                                            {% if product.thumbnail_url %}
+                                            <img src="{{ product.thumbnail_url }}" alt="{{ product.name }}" class="rounded-3 me-3 flex-shrink-0" style="width: 48px; height: 48px; object-fit: cover;" onerror="this.onerror=null; this.src='https://picsum.photos/600/800';">
+                                            {% else %}
+                                            <div class="rounded-3 bg-light d-flex align-items-center justify-content-center me-3 flex-shrink-0" style="width: 48px; height: 48px;">
+                                                <i class="bi bi-image text-muted fs-5"></i>
+                                            </div>
+                                            {% endif %}
+                                            <div class="text-truncate">
+                                                <div class="fw-semibold text-dark text-truncate">{{ product.name }}</div>
+                                                <small class="text-muted text-truncate d-block" style="max-width: 320px;">{{ product.description or '-' }}</small>
+                                            </div>
+                                        </div>
+                                    </td>
+
+                                    <!-- 2. 카테고리 -->
+                                    <td>
+                                        <span class="badge bg-secondary-subtle text-secondary px-2.5 py-1.5 rounded-pill fw-medium">
+                                            {{ product.category_name }}
+                                        </span>
+                                    </td>
+
+                                    <!-- 3. 가격 (실제 판매가 / 할인가) -->
+                                    <td class="text-end fw-bold text-dark">
+                                        {{ "{:,}".format(product.price|int) }}원
+                                    </td>
+
+                                    <!-- 4. 정가 (할인 적용 시 취소선 또는 원가 표시) -->
+                                    <td class="text-end">
+                                        {% if product.original_price and product.original_price > product.price %}
+                                            <span class="text-muted text-decoration-line-through small">
+                                                {{ "{:,}".format(product.original_price|int) }}원
+                                            </span>
+                                        {% else %}
+                                            <span class="text-muted small">
+                                                {{ "{:,}".format((product.original_price or product.price)|int) }}원
+                                            </span>
+                                        {% endif %}
+                                    </td>
+
+                                    <!-- 5. 재고 -->
+                                    <td class="text-end">
+                                        {% if product.total_stock == 0 %}
+                                            <span class="badge bg-danger-subtle text-danger px-2 py-1 rounded-pill fw-semibold">품절 (0)</span>
+                                        {% elif product.total_stock <= 10 %}
+                                            <span class="badge bg-warning-subtle text-warning-emphasis px-2 py-1 rounded-pill fw-semibold">{{ "{:,}".format(product.total_stock) }}개 (품절임박)</span>
+                                        {% else %}
+                                            <span class="fw-semibold text-dark">{{ "{:,}".format(product.total_stock) }}</span><span class="text-muted small">개</span>
+                                        {% endif %}
+                                    </td>
+
+                                    <!-- 6. 활성상태 -->
+                                    <td class="text-center pe-4">
+                                        {% if product.is_active %}
+                                            <span class="badge bg-success-subtle text-success px-2.5 py-1.5 rounded-pill fw-medium">
+                                                <i class="bi bi-check-circle-fill me-1"></i>활성
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-secondary-subtle text-secondary px-2.5 py-1.5 rounded-pill fw-medium">
+                                                <i class="bi bi-dash-circle-fill me-1"></i>비활성
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="6" class="text-center py-5 text-muted">
+                                        <i class="bi bi-box-seam fs-2 d-block mb-2 text-secondary"></i>
+                                        등록된 상품이 없습니다.
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+{% endblock %}
