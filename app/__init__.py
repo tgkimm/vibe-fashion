@@ -211,18 +211,29 @@ def create_app():
         from flask import render_template
         from app.utils import get_supabase_admin_client, get_supabase_client
 
+        statuses = ("paid", "preparing", "shipped", "delivered", "refunded", "cancelled")
+        selected_status = request.args.get("status", "").strip().lower()
+        if selected_status not in statuses:
+            selected_status = ""
+        order_number_search = request.args.get("order_number", "").strip()
+        email_search = request.args.get("email", "").strip()
+
         admin_client = get_supabase_admin_client()
         db_client = admin_client or get_supabase_client()
         orders = []
 
         if db_client:
             try:
-                orders_res = (
-                    db_client.table("orders")
-                    .select("order_number, created_at, total_amount, payment_amount, status, profiles(email)")
-                    .order("created_at", desc=True)
-                    .execute()
+                query = db_client.table("orders").select(
+                    "order_number, created_at, total_amount, payment_amount, status, profiles(email)"
                 )
+                if selected_status:
+                    query = query.eq("status", selected_status.upper())
+                if order_number_search:
+                    query = query.ilike("order_number", f"%{order_number_search}%")
+                if email_search:
+                    query = query.ilike("profiles.email", f"%{email_search}%")
+                orders_res = query.order("created_at", desc=True).execute()
                 kst = timezone(timedelta(hours=9))
                 for order in orders_res.data or []:
                     created_at = order.get("created_at") or ""
@@ -245,7 +256,14 @@ def create_app():
             except Exception as e:
                 app.logger.warning(f"[관리자 주문 목록 조회 오류] {e}")
 
-        return render_template("admin/orders.html", orders=orders)
+        return render_template(
+            "admin/orders.html",
+            orders=orders,
+            statuses=statuses,
+            selected_status=selected_status,
+            order_number_search=order_number_search,
+            email_search=email_search,
+        )
 
     @app.route("/admin/products", defaults={"product_id": None}, methods=["GET", "POST"])
     @app.route("/admin/products/<product_id>", methods=["PATCH"])

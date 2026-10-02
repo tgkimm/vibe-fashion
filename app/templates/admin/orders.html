@@ -41,6 +41,36 @@
                 </span>
             </div>
 
+            <form method="get" action="{{ url_for('admin_orders') }}" class="row g-2 align-items-end mb-3">
+                <div class="col-12 col-sm-4 col-lg-3">
+                    <label for="status" class="form-label small fw-semibold">주문 상태</label>
+                    <select class="form-select" id="status" name="status">
+                        <option value="">전체</option>
+                        {% for status in statuses %}
+                        <option value="{{ status }}" {% if selected_status == status %}selected{% endif %}>{{ status }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-sm-8 col-lg-4">
+                    <label for="order_number" class="form-label small fw-semibold">주문번호</label>
+                    <input type="search" class="form-control" id="order_number" name="order_number"
+                           value="{{ order_number_search }}" placeholder="VF-YYYYMMDD-XXXX">
+                </div>
+                <div class="col-12 col-sm-8 col-lg-3">
+                    <label for="email" class="form-label small fw-semibold">고객 이메일</label>
+                    <input type="search" class="form-control" id="email" name="email"
+                           value="{{ email_search }}" placeholder="이메일 검색 (선택)">
+                </div>
+                <div class="col-12 col-sm-4 col-lg-2 d-flex gap-2">
+                    <button type="submit" class="btn btn-dark flex-grow-1">
+                        <i class="bi bi-search me-1" aria-hidden="true"></i>검색
+                    </button>
+                    <a href="{{ url_for('admin_orders') }}" class="btn btn-outline-secondary" aria-label="필터 초기화" title="필터 초기화">
+                        <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
+                    </a>
+                </div>
+            </form>
+
             <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
                 <div class="table-responsive">
                     <table class="table align-middle table-hover mb-0">
