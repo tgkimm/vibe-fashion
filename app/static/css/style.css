@@ -44,6 +44,7 @@ body {
 
 .navbar {
     background-color: var(--color-navy) !important;
+    z-index: 1030;
 }
 
 /* 상단 네비게이션 로그인 버튼 코랄색 스타일 */
