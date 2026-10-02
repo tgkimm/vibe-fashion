@@ -23,7 +23,7 @@
                         </div>
                         <div class="col-6 text-end">
                             <small class="text-muted">주문일시</small>
-                            <p class="fw-bold mb-0">{{ now.strftime('%Y.%m.%d %H:%M') if now else '' }}</p>
+                            <p class="fw-bold mb-0">{% if created_at %}{{ created_at[:16].replace('T', ' ') }}{% elif now %}{{ now.strftime('%Y.%m.%d %H:%M') }}{% endif %}</p>
                         </div>
                     </div>
                     <hr>
