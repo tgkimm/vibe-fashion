@@ -717,7 +717,7 @@ def request_refund(order_id=None):
                 admin_supabase.table("orders").update({"status": "REFUNDED"}).eq("id", target_order_id).execute()
 
         logger.info(f"[환불 신청 완료] order_id={target_order_id}, category={category}, amount={refund_amount}")
-        flash(f"환불 신청이 접수되었습니다. (환불 예정 금액: {int(refund_amount):,}원)", "success")
+        flash("환불이 신청되었습니다. 영업일 기준 3~5일 내 처리됩니다.", "success")
         return redirect(url_for("auth.mypage", tab="refunds"))
 
     except Exception as e:
