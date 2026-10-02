@@ -549,12 +549,14 @@ def order_complete(order_id=None):
         )
         items = items_res.data or []
         total_count = sum(item.get("quantity", 0) for item in items)
+        order_status = str(order_data.get("status") or "").lower()
 
         return render_template(
             "order/checkout_success.html",
             order_id=target_order_id,
             order=order_data,
             order_number=order_data.get("order_number"),
+            order_status=order_status,
             shipping_address=shipping_address,
             user=user,
             items=items,

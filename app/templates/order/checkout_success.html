@@ -16,16 +16,38 @@
             <!-- 주문 정보 요약 -->
             <div class="card border-0 bg-light rounded-4 p-4 mb-4">
                 <div class="text-start">
-                    <div class="row mb-3">
-                        <div class="col-6 text-start">
-                            <small class="text-muted">주문번호</small>
-                            <p class="fw-bold mb-0">{{ order_number }}</p>
+                    <div class="row mb-3 align-items-center">
+                        <div class="col-sm-6 text-start mb-2 mb-sm-0">
+                            <small class="text-muted d-block">주문번호</small>
+                            <span class="fw-bold me-2">{{ order_number }}</span>
+                            {% if order_status == 'paid' %}
+                            <span class="badge bg-primary">결제완료</span>
+                            {% elif order_status == 'preparing' %}
+                            <span class="badge bg-primary">상품준비중</span>
+                            {% elif order_status == 'shipped' %}
+                            <span class="badge bg-info text-dark">배송중</span>
+                            {% elif order_status == 'delivered' %}
+                            <span class="badge bg-success">배송완료</span>
+                            {% elif order_status == 'refund_requested' %}
+                            <span class="badge bg-warning text-dark">환불신청됨</span>
+                            {% elif order_status == 'refunded' %}
+                            <span class="badge bg-warning text-dark">환불완료</span>
+                            {% elif order_status == 'cancelled' %}
+                            <span class="badge bg-secondary">주문취소</span>
+                            {% elif order_status %}
+                            <span class="badge bg-secondary">{{ order_status }}</span>
+                            {% endif %}
                         </div>
-                        <div class="col-6 text-end">
-                            <small class="text-muted">주문일시</small>
-                            <p class="fw-bold mb-0">{% if created_at %}{{ created_at[:16].replace('T', ' ') }}{% elif now %}{{ now.strftime('%Y.%m.%d %H:%M') }}{% endif %}</p>
+                        <div class="col-sm-6 text-sm-end text-start">
+                            <small class="text-muted d-block">주문일시</small>
+                            <span class="fw-bold">{% if created_at %}{{ created_at[:16].replace('T', ' ') }}{% elif now %}{{ now.strftime('%Y.%m.%d %H:%M') }}{% endif %}</span>
                         </div>
                     </div>
+                    {% if order_status == 'paid' %}
+                    <div class="alert alert-primary bg-primary bg-opacity-10 border-0 text-primary py-2 px-3 small rounded-3 mb-3" role="alert">
+                        <i class="bi bi-info-circle me-1"></i>상품 준비가 시작되면 마이페이지에서 배송 상태를 확인하실 수 있습니다.
+                    </div>
+                    {% endif %}
                     {% if shipping_address %}
                     <div class="row mb-3">
                         <div class="col-12 text-start">
