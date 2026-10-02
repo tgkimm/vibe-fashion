@@ -198,13 +198,27 @@
                                         </div>
                                         <div class="d-flex align-items-center gap-2">
                                             {% if ord.status_lower == 'delivered' %}
+                                            {% set is_already_refunded = false %}
+                                            {% if refunds %}
+                                                {% for ref in refunds %}
+                                                    {% if ref.order_id == ord.id %}
+                                                        {% set is_already_refunded = true %}
+                                                    {% endif %}
+                                                {% endfor %}
+                                            {% endif %}
+                                            {% if not is_already_refunded %}
                                             <button type="button" class="btn btn-outline-danger btn-sm rounded-pill px-3 py-1 btn-refund-modal"
                                                 data-bs-toggle="modal"
                                                 data-bs-target="#refundModal"
                                                 data-order-id="{{ ord.id }}"
-                                                data-order-number="{{ ord.order_number }}">
+                                                data-order-number="{{ ord.order_number }}"
+                                                data-total-amount="{{ ord.total_amount|int }}"
+                                                data-payment-amount="{{ ord.payment_amount|int }}">
                                                 <i class="bi bi-arrow-return-left me-1"></i>환불 신청
                                             </button>
+                                            {% else %}
+                                            <span class="badge bg-warning text-dark px-2 py-1 rounded-pill small">환불 진행중</span>
+                                            {% endif %}
                                             {% endif %}
                                         </div>
                                     </div>
@@ -384,7 +398,7 @@
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form method="POST" action="{{ url_for('order.request_refund') }}">
+            <form method="POST" id="refundForm" action="">
                 <div class="modal-body py-2">
                     <input type="hidden" name="order_id" id="refundOrderId">
                     <div class="mb-3">
@@ -392,8 +406,34 @@
                         <div class="fw-bold font-monospace fs-6" id="refundOrderNumber">-</div>
                     </div>
                     <div class="mb-3">
-                        <label for="refundReason" class="form-label small fw-semibold">환불 사유 (선택)</label>
-                        <textarea class="form-control rounded-3" id="refundReason" name="reason" rows="3" placeholder="환불 요청 사유를 작성해 주세요. (예: 단순 변심, 사이즈 불일치 등)"></textarea>
+                        <label for="refundCategory" class="form-label small fw-semibold">환불 사유 카테고리 <span class="text-danger">*</span></label>
+                        <select class="form-select rounded-3" id="refundCategory" name="category" required>
+                            <option value="단순변심" selected>단순변심 (상품 금액만 환불)</option>
+                            <option value="상품불량">상품불량 (배송비 포함 전액 환불)</option>
+                            <option value="배송오류">배송오류 (배송비 포함 전액 환불)</option>
+                            <option value="사이즈불일치">사이즈불일치 (상품 금액만 환불)</option>
+                            <option value="기타">기타 (상품 금액만 환불)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="refundReason" class="form-label small fw-semibold">상세 사유 (선택)</label>
+                        <textarea class="form-control rounded-3" id="refundReason" name="reason" rows="3" placeholder="환불 요청 상세 사유를 입력해 주세요."></textarea>
+                    </div>
+                    <!-- 예상 환불 금액 안내 -->
+                    <div class="card border-0 bg-light p-3 rounded-3 mb-3">
+                        <div class="d-flex justify-content-between small mb-1">
+                            <span class="text-muted">상품 금액</span>
+                            <span class="fw-semibold" id="refundModalProductAmount">0원</span>
+                        </div>
+                        <div class="d-flex justify-content-between small mb-2">
+                            <span class="text-muted">배송비 환불</span>
+                            <span class="fw-semibold" id="refundModalShippingFee">0원</span>
+                        </div>
+                        <hr class="my-1">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="fw-bold small">예상 환불 금액</span>
+                            <span class="fw-bold text-danger fs-6" id="refundModalTotalAmount">0원</span>
+                        </div>
                     </div>
                     <div class="alert alert-warning py-2 px-3 small rounded-3 mb-0">
                         <i class="bi bi-exclamation-circle me-1"></i>배송완료된 상품의 환불 신청 시, 상품 회수 및 검수 후 결제 취소가 진행됩니다.
@@ -596,15 +636,51 @@ document.addEventListener("DOMContentLoaded", () => {
         newPwConfirm.addEventListener("input", checkMypagePwMatch);
     }
 
-    // 환불 신청 모달 바인딩
+    // 환불 신청 모달 바인딩 및 금액 계산
+    const refundForm = document.getElementById("refundForm");
     const refundOrderIdInput = document.getElementById("refundOrderId");
     const refundOrderNumberSpan = document.getElementById("refundOrderNumber");
+    const refundCategorySelect = document.getElementById("refundCategory");
+    const refundModalProductAmount = document.getElementById("refundModalProductAmount");
+    const refundModalShippingFee = document.getElementById("refundModalShippingFee");
+    const refundModalTotalAmount = document.getElementById("refundModalTotalAmount");
+
+    let currentOrderTotal = 0;
+    let currentOrderPayment = 0;
+
+    function updateExpectedRefundAmount() {
+        const cat = refundCategorySelect.value;
+        const shippingFee = Math.max(0, currentOrderPayment - currentOrderTotal);
+        let refundShipping = 0;
+        if (cat === "상품불량" || cat === "배송오류") {
+            refundShipping = shippingFee;
+        }
+        const totalRefund = currentOrderTotal + refundShipping;
+
+        if (refundModalProductAmount) refundModalProductAmount.textContent = currentOrderTotal.toLocaleString() + "원";
+        if (refundModalShippingFee) {
+            refundModalShippingFee.textContent = refundShipping > 0 ? ("+" + refundShipping.toLocaleString() + "원") : "0원 (고객 부담)";
+        }
+        if (refundModalTotalAmount) refundModalTotalAmount.textContent = totalRefund.toLocaleString() + "원";
+    }
+
+    if (refundCategorySelect) {
+        refundCategorySelect.addEventListener("change", updateExpectedRefundAmount);
+    }
+
     document.querySelectorAll(".btn-refund-modal").forEach((btn) => {
         btn.addEventListener("click", () => {
             const orderId = btn.getAttribute("data-order-id");
             const orderNumber = btn.getAttribute("data-order-number");
+            currentOrderTotal = parseInt(btn.getAttribute("data-total-amount") || "0", 10);
+            currentOrderPayment = parseInt(btn.getAttribute("data-payment-amount") || "0", 10);
+
             if (refundOrderIdInput) refundOrderIdInput.value = orderId;
             if (refundOrderNumberSpan) refundOrderNumberSpan.textContent = orderNumber;
+            if (refundForm) refundForm.action = `/order/${orderId}/refund`;
+            if (refundCategorySelect) refundCategorySelect.value = "단순변심";
+
+            updateExpectedRefundAmount();
         });
     });
 });

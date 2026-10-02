@@ -598,13 +598,23 @@ def order_complete(order_id=None):
         return redirect(url_for("main.index"))
 
 
+@order_bp.route("/<order_id>/refund", methods=["POST"])
 @order_bp.route("/refund", methods=["POST"])
-def request_refund():
+def request_refund(order_id=None):
     """
-    주문 환불 신청 처리: POST /order/refund
+    주문 환불 신청 처리: POST /order/<order_id>/refund
     - 로그인 필수
-    - delivered 상태인 본인 주문에 대해서만 환불 신청 가능
-    - refunds 테이블에 기록 및 orders 상태 갱신
+    - 본인 주문 확인
+    - orders.status가 'delivered'가 아니면 차단
+    - 이미 환불 신청된 주문(refunds 테이블에 존재하거나 status != delivered) 중복 신청 차단
+    - 환불 사유: 카테고리(단순변심, 상품불량, 배송오류, 사이즈불일치, 기타) + 상세 사유 텍스트
+    - 환불 금액 계산:
+        * 상품 금액(total_amount) 전액 환불
+        * 배송비(shipping_fee = payment_amount - total_amount)는 사유가 "상품불량"/"배송오류"일 때만 포함
+        * "단순변심"/"사이즈불일치"/"기타"는 상품 금액만 환불
+    - refunds 테이블에 INSERT (status='REQUESTED')
+    - orders.status를 'refund_requested' (또는 DB 제약조건에 따라 'REFUNDED')로 UPDATE
+    - 성공 시 마이페이지로 리다이렉트
     """
     user = session.get("user")
     if not user or not user.get("id"):
@@ -612,10 +622,17 @@ def request_refund():
         return redirect(url_for("auth.login"))
 
     user_id = user["id"]
-    order_id = request.form.get("order_id", "").strip()
-    reason = request.form.get("reason", "").strip() or "고객 변심 / 단순 환불 요청"
+    target_order_id = order_id or request.form.get("order_id", "").strip()
+    category = request.form.get("category", "").strip() or "단순변심"
+    detail_reason = request.form.get("reason", "").strip()
 
-    if not order_id:
+    valid_categories = ["단순변심", "상품불량", "배송오류", "사이즈불일치", "기타"]
+    if category not in valid_categories:
+        category = "기타"
+
+    full_reason = f"[{category}] {detail_reason}".strip() if detail_reason else f"[{category}]"
+
+    if not target_order_id:
         flash("환불을 신청할 주문 정보가 올바르지 않습니다.", "warning")
         return redirect(url_for("auth.mypage", tab="orders"))
 
@@ -625,11 +642,11 @@ def request_refund():
         return redirect(url_for("auth.mypage", tab="orders"))
 
     try:
-        # 본인 주문 확인
+        # 1. 주문 정보 조회 및 본인 주문 확인
         order_res = (
             admin_supabase.table("orders")
             .select("*")
-            .eq("id", order_id)
+            .eq("id", target_order_id)
             .single()
             .execute()
         )
@@ -642,35 +659,68 @@ def request_refund():
             flash("해당 주문에 대한 권한이 없습니다.", "error")
             return redirect(url_for("auth.mypage", tab="orders"))
 
-        current_status = str(order_data.get("status") or "").upper()
-        if current_status != "DELIVERED":
+        # 2. orders.status가 'delivered'가 아니면 차단
+        current_status = str(order_data.get("status") or "").lower()
+        if current_status != "delivered":
             flash("배송완료(delivered) 상태의 주문만 환불 신청이 가능합니다.", "warning")
             return redirect(url_for("auth.mypage", tab="orders"))
 
-        refund_amount = float(order_data.get("payment_amount") or order_data.get("total_amount") or 0)
+        # 3. 이미 환불 신청된 주문인지 확인 (중복 신청 방지)
+        existing_refund = (
+            admin_supabase.table("refunds")
+            .select("id")
+            .eq("order_id", target_order_id)
+            .limit(1)
+            .execute()
+        )
+        if existing_refund.data and len(existing_refund.data) > 0:
+            flash("이미 환불 신청이 접수된 주문입니다.", "warning")
+            return redirect(url_for("auth.mypage", tab="refunds"))
 
-        # 1. refunds 테이블에 환불 요청 생성
+        # 4. 환불 금액 계산
+        # 상품 금액 합계: total_amount
+        # 실 결제 금액: payment_amount
+        # 배송비 = payment_amount - total_amount
+        product_total = float(order_data.get("total_amount") or 0)
+        payment_total = float(order_data.get("payment_amount") or product_total)
+        shipping_fee = max(0.0, payment_total - product_total)
+
+        # "상품불량", "배송오류"는 배송비 포함 전액 환불
+        # "단순변심", "사이즈불일치", "기타"는 상품 금액만 환불
+        if category in ("상품불량", "배송오류"):
+            refund_amount = product_total + shipping_fee
+        else:
+            refund_amount = product_total
+
+        # 5. refunds 테이블에 INSERT (status='REQUESTED')
+        refund_payload = {
+            "order_id": target_order_id,
+            "user_id": user_id,
+            "reason": full_reason,
+            "refund_amount": refund_amount,
+            "status": "REQUESTED"
+        }
+        # category 컬럼이 존재할 경우를 대비하여 시도
         try:
-            admin_supabase.table("refunds").insert({
-                "order_id": order_id,
-                "user_id": user_id,
-                "reason": reason,
-                "refund_amount": refund_amount,
-                "status": "REQUESTED"
-            }).execute()
-        except Exception as re:
-            logger.warning(f"[refunds 테이블 INSERT 경고] {re}")
+            admin_supabase.table("refunds").insert({**refund_payload, "category": category}).execute()
+        except Exception:
+            admin_supabase.table("refunds").insert(refund_payload).execute()
 
-        # 2. orders 테이블 상태 업데이트 ('REFUNDED')
+        # 6. orders.status를 'refund_requested'로 UPDATE 시도 (DB 제약조건에 따라 대소문자/REFUNDED 폴백)
         try:
-            admin_supabase.table("orders").update({"status": "REFUNDED"}).eq("id", order_id).execute()
-        except Exception as oe:
-            logger.warning(f"[orders 상태 업데이트 경고] {oe}")
+            admin_supabase.table("orders").update({"status": "refund_requested"}).eq("id", target_order_id).execute()
+        except Exception:
+            try:
+                admin_supabase.table("orders").update({"status": "REFUND_REQUESTED"}).eq("id", target_order_id).execute()
+            except Exception:
+                # DB check constraint에 REFUNDED만 정의된 경우 지원
+                admin_supabase.table("orders").update({"status": "REFUNDED"}).eq("id", target_order_id).execute()
 
-        flash("환불 신청이 정상적으로 접수되었습니다.", "success")
-        return redirect(url_for("auth.mypage", tab="orders"))
+        logger.info(f"[환불 신청 완료] order_id={target_order_id}, category={category}, amount={refund_amount}")
+        flash(f"환불 신청이 접수되었습니다. (환불 예정 금액: {int(refund_amount):,}원)", "success")
+        return redirect(url_for("auth.mypage", tab="refunds"))
 
     except Exception as e:
-        logger.error(f"[환불 신청 오류] {e}")
+        logger.error(f"[환불 신청 오류] {e}", exc_info=True)
         flash("환불 신청 처리 중 오류가 발생했습니다.", "error")
         return redirect(url_for("auth.mypage", tab="orders"))
