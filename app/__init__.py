@@ -203,6 +203,50 @@ def create_app():
             recent_orders=recent_orders,
         )
 
+    @app.route("/admin/orders")
+    @login_required
+    @admin_required
+    def admin_orders():
+        from datetime import datetime, timedelta, timezone
+        from flask import render_template
+        from app.utils import get_supabase_admin_client, get_supabase_client
+
+        admin_client = get_supabase_admin_client()
+        db_client = admin_client or get_supabase_client()
+        orders = []
+
+        if db_client:
+            try:
+                orders_res = (
+                    db_client.table("orders")
+                    .select("order_number, created_at, total_amount, payment_amount, status, profiles(email)")
+                    .order("created_at", desc=True)
+                    .execute()
+                )
+                kst = timezone(timedelta(hours=9))
+                for order in orders_res.data or []:
+                    created_at = order.get("created_at") or ""
+                    created_at_formatted = "-"
+                    if created_at:
+                        try:
+                            parsed_at = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                            created_at_formatted = parsed_at.astimezone(kst).strftime("%Y-%m-%d %H:%M")
+                        except (TypeError, ValueError):
+                            created_at_formatted = created_at[:16]
+
+                    profile = order.get("profiles") or {}
+                    orders.append({
+                        "order_number": order.get("order_number") or "-",
+                        "created_at": created_at_formatted,
+                        "customer_email": profile.get("email") or "미등록",
+                        "amount": float(order.get("total_amount") or order.get("payment_amount") or 0),
+                        "status": order.get("status") or "-",
+                    })
+            except Exception as e:
+                app.logger.warning(f"[관리자 주문 목록 조회 오류] {e}")
+
+        return render_template("admin/orders.html", orders=orders)
+
     @app.route("/admin/products", defaults={"product_id": None}, methods=["GET", "POST"])
     @app.route("/admin/products/<product_id>", methods=["PATCH"])
     @login_required
